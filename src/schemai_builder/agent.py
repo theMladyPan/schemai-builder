@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -10,6 +9,7 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.models import Model
 
 from .apply import DiffError, apply_and_record
+from .config.settings import get_settings
 from .erc import ErcIssue, run_erc
 from .models import Project, ReasonsPatch, SchematicDiff
 from .persist import load_project, save_project
@@ -52,7 +52,7 @@ def _run_agent(
     extra_images: list[BinaryContent] | None = None,
 ) -> BaseModel:
     agent = Agent(
-        model or os.environ.get("OPENROUTER_MODEL", "openrouter:openai/gpt-4.1-mini"),
+        model or get_settings().llm_model,
         output_type=output_type,
         instructions=instructions,
     )

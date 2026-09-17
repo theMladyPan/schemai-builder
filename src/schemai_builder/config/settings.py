@@ -28,6 +28,11 @@ class LogfireSettings(BaseModel):
 class Settings(BaseSettings):
     """Root settings; env vars split once on underscore (LOGFIRE_TOKEN -> logfire.token)."""
 
+    llm_model: str = Field(
+        default="openrouter:z-ai/glm-5.3-flash",
+        validation_alias="OPENROUTER_MODEL",
+        description="pydantic-ai model string for the create/review agents.",
+    )
     project: str = Field(default="schemai", description="Service name for telemetry.")
     environment: str = Field(default="local", description="Deployment environment tag.")
     debug: bool = Field(default=False, description="Debug disables logfire scrubbing.")
