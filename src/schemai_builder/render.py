@@ -10,6 +10,23 @@ from .models import Component, PinDef, Schematic
 
 GRID = 20
 _TICK = {"left": (-6, 0), "right": (6, 0), "top": (0, -6), "bottom": (0, 6)}
+_DIR = {"left": (-1, 0), "right": (1, 0), "top": (0, -1), "bottom": (0, 1)}
+_ROT_SIDE = {
+    0: {"left": "left", "right": "right", "top": "top", "bottom": "bottom"},
+    90: {"left": "top", "top": "right", "right": "bottom", "bottom": "left"},
+    180: {"left": "right", "right": "left", "top": "bottom", "bottom": "top"},
+    270: {"left": "bottom", "bottom": "right", "right": "top", "top": "left"},
+}
+
+
+def _pin_side_world(comp: Component, pin: PinDef) -> str:
+    """Pin side after mirror+rotation; drives stub direction and label side."""
+    side = pin.side
+    if comp.mirror:
+        side = {"left": "right", "right": "left", "top": "top", "bottom": "bottom"}[
+            side
+        ]
+    return _ROT_SIDE[comp.rotation][side]
 
 
 def _pin_world(comp: Component, pin: PinDef, lib: dict) -> tuple[int, int]:
@@ -42,7 +59,7 @@ def _find_pin(comp: Component, name: str, lib: dict) -> PinDef | None:
 def _pin_connect(comp: Component, pin: PinDef, lib: dict) -> tuple[int, int]:
     """Wire attach point: pin position plus tick length, i.e. outside the body."""
     px, py = _pin_world(comp, pin, lib)
-    ddx, ddy = _TICK[pin.side]
+    ddx, ddy = _TICK[_pin_side_world(comp, pin)]
     return px + ddx, py + ddy
 
 
@@ -58,13 +75,15 @@ def _resolve(schematic: Schematic, comp_id: str) -> Component | None:
 
 
 def _net_pins(schematic: Schematic, net_name_pins: list[str], sheet: int, lib: dict):
-    """Sorted [(x, y, comp_id)] for a net's pins located on this sheet."""
+    """Sorted [(x, y, comp_id, world_side)] for a net's pins located on this sheet."""
     out = []
     for pref in net_name_pins:
         comp = _resolve(schematic, pref.partition(".")[0])
         pin = _find_pin(comp, pref.partition(".")[2], lib) if comp else None
         if comp is not None and pin is not None and comp.sheet == sheet:
-            out.append((*_pin_connect(comp, pin, lib), comp.id))
+            out.append(
+                (*_pin_connect(comp, pin, lib), comp.id, _pin_side_world(comp, pin))
+            )
     out.sort(key=lambda t: (t[0], t[1]))
     return out
 
@@ -127,20 +146,52 @@ def _route(ax, ay, bx, by, role: str, rects: list[tuple]) -> list[tuple[int, int
     return _zpath(ax, ay, bx, by, orders[0], 0)
 
 
-def _free_y(comps, lib: dict, x: int, y: int) -> int:
-    """Nudge a label y up until it is outside every inflated component bbox."""
-    rects = [
-        (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
-        for (bx0, by0, bx1, by1) in [_bbox(c, lib) for c in comps]
-    ]
+def _overlap(a: tuple, b: tuple) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _text_box(x: int, y: int, text: str, anchor: str) -> tuple:
+    """Estimated label rectangle (baseline y, anchor start/middle/end)."""
+    w = max(12, len(text) * 7)
+    x0 = x - w / 2 if anchor == "middle" else x - w if anchor == "end" else x
+    return (x0, y - 12, x0 + w, y + 2)
+
+
+def _seed_occupied(comps, lib: dict) -> list[tuple]:
+    """Inflated bodies plus ref/value text boxes; labels must avoid all of these."""
+    occ = []
+    for c in comps:
+        x, y, x2, y2 = _bbox(c, lib)
+        occ.append((x - 4, y - 4, x2 + 4, y2 + 4))
+        cx = (x + x2) / 2
+        rw = max(12, len(c.ref) * 7)
+        occ.append((cx - rw / 2, y - 20, cx + rw / 2, y - 2))
+        if c.value:
+            vw = max(12, len(c.value) * 7)
+            occ.append((cx - vw / 2, y2 + 2, cx + vw / 2, y2 + 18))
+    return occ
+
+
+def _place_label(occupied: list[tuple], candidates: list[tuple], text: str) -> tuple:
+    """First collision-free candidate wins; otherwise nudge the last one upward."""
+    for x, y, anchor in candidates:
+        box = _text_box(x, y, text, anchor)
+        if not any(_overlap(box, o) for o in occupied):
+            occupied.append(box)
+            return x, y, anchor
+    x, y, anchor = candidates[-1]
     for _ in range(8):
-        if not any(r[0] < x < r[2] and r[1] < y < r[3] for r in rects):
-            return y
+        box = _text_box(x, y, text, anchor)
+        if not any(_overlap(box, o) for o in occupied):
+            break
         y -= 12
-    return y
+    occupied.append(box)
+    return x, y, anchor
 
 
-def _draw_component(comp: Component, parts: list[str], lib: dict) -> None:
+def _draw_component(
+    comp: Component, parts: list[str], lib: dict, occupied: list
+) -> None:
     entry = lib[comp.library_id]
     x, y, x2, y2 = _bbox(comp, lib)
     kind = comp.library_id
@@ -189,16 +240,28 @@ def _draw_component(comp: Component, parts: list[str], lib: dict) -> None:
         parts.append(f'<rect x="{x}" y="{y}" width="{x2 - x}" height="{y2 - y}"/>')
     for pin in entry.pins:
         px, py = _pin_world(comp, pin, lib)
-        ddx, ddy = _TICK[pin.side]
+        ddx, ddy = _TICK[_pin_side_world(comp, pin)]
         parts.append(f'<line x1="{px}" y1="{py}" x2="{px + ddx}" y2="{py + ddy}"/>')
+    rx, ry, ra = _place_label(
+        occupied,
+        [((x + x2) / 2, y - 4, "middle"), (x - 10, cy, "end"), (x2 + 10, cy, "start")],
+        comp.ref,
+    )
     parts.append(
-        f'<text x="{(x + x2) // 2}" y="{y - 4}" text-anchor="middle" fill="black">'
-        f"{escape(comp.ref)}</text>"
+        f'<text x="{rx}" y="{ry}" text-anchor="{ra}" fill="black">{escape(comp.ref)}</text>'
     )
     if comp.value:
+        vx, vy, va = _place_label(
+            occupied,
+            [
+                ((x + x2) / 2, y2 + 14, "middle"),
+                (x2 + 10, cy, "start"),
+                (x - 10, cy, "end"),
+            ],
+            comp.value,
+        )
         parts.append(
-            f'<text x="{(x + x2) // 2}" y="{y2 + 14}" text-anchor="middle" fill="black">'
-            f"{escape(comp.value)}</text>"
+            f'<text x="{vx}" y="{vy}" text-anchor="{va}" fill="black">{escape(comp.value)}</text>'
         )
 
 
@@ -229,9 +292,9 @@ def render_sheet(
     if sheet.title:
         parts.append(f'<text x="20" y="24" fill="black">{escape(sheet.title)}</text>')
 
+    occupied = _seed_occupied(comps, lib)
     for comp in comps:
-        _draw_component(comp, parts, lib)
-
+        _draw_component(comp, parts, lib, occupied)
     for net in schematic.nets:
         pins = _net_pins(schematic, net.pins, sheet_number, lib)
         offpage = len(_net_sheets(schematic, net.pins)) >= 2 and bool(pins)
@@ -240,35 +303,60 @@ def render_sheet(
             parts.append(
                 f'<polygon points="{ox},{oy - 8} {ox},{oy + 8} {ox + 16},{oy}"/>'
             )
+            lx, ly, _ = _place_label(
+                occupied, [(ox - 6, oy + 4, "end"), (ox - 6, oy + 20, "end")], net.name
+            )
             parts.append(
-                f'<text x="{ox - 6}" y="{oy + 4}" text-anchor="end" fill="black">'
+                f'<text x="{lx}" y="{ly}" text-anchor="end" fill="black">'
                 f"{escape(net.name)}</text>"
             )
         if len(pins) == 1:
             if not offpage:
-                px, py, _ = pins[0]
-                my = _free_y(comps, lib, px, py - 6)
+                px, py, _, side = pins[0]
+                dx, dy = _DIR[side]
+                anchor = "start" if dx > 0 else "end" if dx < 0 else "middle"
+                lx, ly, la = _place_label(
+                    occupied,
+                    [
+                        (px + 12 * dx, py + 12 * dy, anchor),
+                        (px + 26 * dx, py + 26 * dy, anchor),
+                        (px + 12 * dx - 18 * dy, py + 12 * dy + 18 * dx, anchor),
+                        (px + 12 * dx + 18 * dy, py + 12 * dy - 18 * dx, anchor),
+                        (px, py - 6, "middle"),
+                    ],
+                    net.name,
+                )
                 parts.append(
-                    f'<text x="{px}" y="{my}" text-anchor="middle" fill="black">'
+                    f'<text x="{lx}" y="{ly}" text-anchor="{la}" fill="black">'
                     f"{escape(net.name)}</text>"
                 )
             continue
         if len(pins) < 2:
             continue
-        for (x1, y1, ida), (x2, y2, idb) in pairwise(pins):
+        routes = []
+        for (x1, y1, ida, _sa), (x2, y2, idb, _sb) in pairwise(pins):
             # endpoint bodies are obstacles too, only their stub tips are free
             rects = [
                 (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
                 for cid, (bx0, by0, bx1, by1) in bboxes.items()
             ]
             pts = _route(x1, y1, x2, y2, net.role, rects)
+            routes.append(pts)
             parts.append(
                 f'<polyline points="{" ".join(f"{px},{py}" for px, py in pts)}"/>'
             )
+        cands = []
+        for pts in routes:
+            for (ax, ay), (bx, by) in pairwise(pts):
+                if ay == by:
+                    cands.append(((ax + bx) // 2, ay - 8, "middle"))
+                elif ax == bx:
+                    cands.append((ax - 10, (ay + by) // 2, "end"))
         mx = (pins[0][0] + pins[1][0]) // 2
-        my = _free_y(comps, lib, mx, (pins[0][1] + pins[1][1]) // 2 - 6)
+        cands.append((mx, (pins[0][1] + pins[1][1]) // 2 - 6, "middle"))
+        lx, ly, la = _place_label(occupied, cands, net.name)
         parts.append(
-            f'<text x="{mx}" y="{my}" text-anchor="middle" fill="black">'
+            f'<text x="{lx}" y="{ly}" text-anchor="{la}" fill="black">'
             f"{escape(net.name)}</text>"
         )
 
