@@ -25,6 +25,7 @@ def test_review_turn_reports_erc_and_is_read_only(tmp_path: Path):
     assert result.message == "looks fine"
     assert any(i.kind == "single_ended_net" for i in result.issues)
     assert "## erc" in prompts[0]
+    assert "## library" in prompts[0]
     assert "single_ended_net: A" in prompts[0]
     assert "[1] keep it simple" in prompts[0]
     project = load_project(tmp_path)

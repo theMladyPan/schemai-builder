@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from schemai_builder.apply import apply_diff
+from schemai_builder.library import LIBRARY
 from schemai_builder.models import (
     AddComponent,
     HistoryEntry,
@@ -54,6 +55,13 @@ def test_build_prompt_numbered_reasons_and_no_erc_or_svg():
     assert "## user\nadd a pull-up" in prompt
     assert "ERC" not in prompt
     assert "<svg" not in prompt
+
+
+def test_build_prompt_lists_all_library_ids():
+    prompt = build_prompt(make_project(), "add a pull-up")
+    assert "## library" in prompt
+    for lib_id in LIBRARY:
+        assert lib_id in prompt
 
 
 def test_build_prompt_empty_reasons():

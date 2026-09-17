@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .library import LIBRARY
 from .models import Project, Schematic
 from .reasons import format_numbered, split_paragraphs
 from .render import render_all
@@ -18,6 +19,17 @@ def netlist_text(schematic: Schematic) -> str:
     ]
     lines.append("nets:")
     lines += [f"{n.name} {n.role}: {', '.join(n.pins)}" for n in schematic.nets]
+    return "\n".join(lines)
+
+
+def library_text() -> str:
+    """Catalog of valid library ids and their pin names."""
+    lines = ["## library", "components must use these ids; pins per part:"]
+    lines += [
+        f"{entry.id}: pins {','.join(p.name for p in entry.pins)}"
+        for entry in LIBRARY.values()
+    ]
+    lines.append('net pin refs use "component_id.pin", e.g. r1.A')
     return "\n".join(lines)
 
 
@@ -44,6 +56,8 @@ def build_prompt(project: Project, user_text: str) -> str:
             "",
             "## netlist",
             netlist_text(project.schematic),
+            "",
+            library_text(),
             "",
             "## recent",
             history_tail(project),

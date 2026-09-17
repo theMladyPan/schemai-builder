@@ -127,6 +127,8 @@ def test_prompt_has_no_erc_and_includes_user_text(tmp_path):
     assert calls["n"] == 1
     assert "ERC" not in prompts[0]
     assert "## user\nadd a resistor" in prompts[0]
+    assert "## library" in prompts[0]
+    assert "R: pins A,B" in prompts[0]
 
 
 def test_run_turn_text_file_in_prompt(tmp_path):
