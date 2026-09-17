@@ -21,12 +21,12 @@ keep them in mind when designing the system:
 - layout control is coarse: LLM diff may contain `move_component(x, y)`, `move_group(region)`, `set_sheet`, component `rotation`/`mirror` — renderer and auto-router draw everything. LLM never emits SVG, wire waypoints or route geometry (too many tokens, no validation possible)
 - LLM sets semantics, router sets geometry: nets carry roles (`power|ground|signal|bus|feedback`), router translates roles into route styles via per-schematic-type conventions (signals left→right, power vertical, ground to bottom bus, 3-phase top-down for high power). If router output proves bad later, add optional pin-level side hints — not now
 - create-agent prompt pack (every turn): `reasons.md` + derived netlist + last 5 history lines (what+why) + sheet PNGs + user text/files. no ERC, no SVG markup, no full JSON dump. open nets during creation are normal. LLM never gets schematic *only* as an image. returns diff + message OR a question if not 100% sure; applied diff re-renders and rewrites `render/`
-- review agent is a separate call (not during create): gets ERC + netlist + PNG + reasons, advisory only. M3.
+- review agent is a separate call (not during create): gets ERC + netlist + PNG + reasons, advisory only
 - `reasons.md` is short markdown, blank-line paragraphs, numbered `[1]..[n]` in the prompt. LLM edits via `ReasonsPatch` (delete ids, replace {id: text}, append paragraphs) — not a full rewrite, not append-only. LLM must delete stale ADRs so the file stays short
 - if layout instructions unclear (which sheet/net(group)/component), LLM concisely asks before changing anything
 - electrical/physical rules: two layers. deterministic ERC in code (single-ended nets, unconnected pins, shorts...) — advisory only, results go to LLM prompt + console, LLM explains and prompts user for fix. LLM bystander review (electrical + physical rules per schematic type) is advisory, never the only check
 - rendering: custom SVG generator — IEC 60617 (EN) symbol library, auto-layout, auto-router -> `<svg>` markup for web UI, PDF export via cairosvg
-- web stack: FastAPI backend + htmx/vanilla JS single page; WebSocket pushes schematic SVG updates; everything Python, no separate frontend codebase
+- web stack: FastAPI backend + vanilla JS single page; WebSocket pushes schematic SVG updates; everything Python, no separate frontend codebase
 - voice deferred — no STT/TTS in first versions. when added: STT placeholder is google/chirp-3 via openrouter, TTS via cartesia
 - versioning = linear `history.jsonl`; revert replays remaining diffs onto empty schematic and regenerates `render/`
 - different schematic types (low power electronics / high power electrical) will have different templates/prompts and symbol subsets. structure well
@@ -38,14 +38,7 @@ M1 — done (dev): pydantic schematic, library, apply/revert, JSON persist, SVG 
 
 M2 — done (dev): project folder persist, ReasonsPatch, create-agent `run_turn` (no ERC, no ask CLI).
 
-M3 — UI + checks:
-- FastAPI web UI (htmx/vanilla, WebSocket push)
-  - left panel is chat window with text input, right panel is rendered scheme with realtime updates 1:4
-  - console for tracking of changes, llm messages
-  - possibility to attach files and pictures for LLM
-- ERC checks: single-ended net detection, unconnected pins, shorts (advisory)
-- LLM bystander review pass (electrical + physical rules per schematic type)
-- PDF export (cairosvg)
+M3 — done (dev): FastAPI UI (vanilla, WS), ERC console, review button, PDF.
 
 later:
 - voice — STT (google/chirp-3 via openrouter) + cartesia TTS
