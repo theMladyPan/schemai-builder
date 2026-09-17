@@ -7,7 +7,7 @@ import networkx as nx
 from .models import Schematic
 
 MARGIN_X = 60
-LAYER_GUTTER = 80
+LAYER_GUTTER = 120  # room for 4+ vertical wire lanes between component columns
 SLOT_H = 180
 BAND_Y = {"power": 100, "signal": 300, "ground": 560}
 # ponytail: fixed bands for the default 1000x700 sheet; per-sheet bands if crowds
@@ -80,6 +80,7 @@ def relayout(schematic, library) -> None:
         return "signal"
 
     sheet_h = {s.number: s.height for s in schematic.sheets}
+    sheet_w = {s.number: s.width for s in schematic.sheets}
     placed = [
         (
             c.x - 4,
@@ -97,9 +98,12 @@ def relayout(schematic, library) -> None:
         slot = slots.get(key, 0)
         slots[key] = slot + 1
         w, h = _rot_size(comp, library)
-        comp.x = layer_x.get(depth.get(comp.id, 0), MARGIN_X)
+        comp.x = min(
+            layer_x.get(depth.get(comp.id, 0), MARGIN_X),
+            sheet_w.get(comp.sheet, 1000) - 60 - w,
+        )
         pref = BAND_Y[b] + slot * SLOT_H
-        limit = sheet_h.get(comp.sheet, 700) - 20
+        limit = sheet_h.get(comp.sheet, 700) - 95  # keep clear of the title block
         # nearest slot position whose body box does not collide with placed bodies
         chosen = None
         for k in range(6):
