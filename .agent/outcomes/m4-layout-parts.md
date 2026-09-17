@@ -32,6 +32,10 @@
 ## Checks
 - `uv run pytest tests/ -q` → 81 passed
 - replay rc.json + power_block.json → no body overlaps, 0 wire-crossings, nothing off-canvas
+- gpt-5.6-sol render review applied: label occupancy engine, world-side stubs, route-based label spots, width-aware layers, nearest-free-slot placement → my-scheme4 re-render: 35 labels / 0 overlaps / 0 crossings
+- gpt-5.6-sol round 3 applied: track registry (lane clearance, least-damage fallback w/ half-grid offsets), EPLAN frame + grid refs + title block, off-page flags with cross-ref text (sheet-zone), labels above longest span, pin names in bodies, thin lines/no text stroke, LAYER_GUTTER 120, x-clamp in frame → my-scheme4: 0 exact wire overlaps (was 12), 0 label overlaps, PNG eyeballed — boss target: Metrotech-style pages
+- gpt-5.6-sol round 2 applied: two-pass routing (labels see all wires), GRID lead-outs with 10px body clearance, ≥3-aligned-body column envelopes, spiral label fallback → my-scheme4: 35 labels / 0 label-overlaps / 0 labels-on-wires; PNG eyeballed clean
+- `/state` returns last 20 history entries; UI paints chat log + cache-busted SVG on load (resume after restart)
 
 ## Residual
 - ponytail: fixed bands + y clamp, not real 2D packing — crowds need packing

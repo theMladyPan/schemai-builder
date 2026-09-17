@@ -1,0 +1,312 @@
+{
+ "schematic": {
+  "sheets": [
+   {
+    "number": 1,
+    "title": "",
+    "width": 1000,
+    "height": 700
+   }
+  ],
+  "components": [
+   {
+    "id": "f1",
+    "library_id": "FUSE",
+    "ref": "F1",
+    "value": "2A T",
+    "sheet": 1,
+    "x": 60,
+    "y": 100,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "psu1",
+    "library_id": "PSU_230V_24V",
+    "ref": "PSU1",
+    "value": "230VAC / 24VDC",
+    "sheet": 1,
+    "x": 460,
+    "y": 100,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb1",
+    "library_id": "TERM",
+    "ref": "X1",
+    "value": "L",
+    "sheet": 1,
+    "x": 260,
+    "y": 100,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb2",
+    "library_id": "TERM",
+    "ref": "X2",
+    "value": "N",
+    "sheet": 1,
+    "x": 700,
+    "y": 280,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb3",
+    "library_id": "TERM",
+    "ref": "X3",
+    "value": "PE",
+    "sheet": 1,
+    "x": 700,
+    "y": 560,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb4",
+    "library_id": "TERM",
+    "ref": "X4",
+    "value": "+24V",
+    "sheet": 1,
+    "x": 700,
+    "y": 460,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb5",
+    "library_id": "TERM",
+    "ref": "X5",
+    "value": "0V",
+    "sheet": 1,
+    "x": 700,
+    "y": 380,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "psu2",
+    "library_id": "PSU_230V_12V",
+    "ref": "PSU2",
+    "value": "230VAC / 12VDC",
+    "sheet": 1,
+    "x": 700,
+    "y": 100,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb6",
+    "library_id": "TERM",
+    "ref": "X6",
+    "value": "+12V",
+    "sheet": 1,
+    "x": 860,
+    "y": 100,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   },
+   {
+    "id": "tb7",
+    "library_id": "TERM",
+    "ref": "X7",
+    "value": "0V",
+    "sheet": 1,
+    "x": 860,
+    "y": 560,
+    "rotation": 0,
+    "mirror": false,
+    "pinned": false
+   }
+  ],
+  "nets": [
+   {
+    "name": "LINE_IN",
+    "role": "power",
+    "pins": [
+     "f1.A"
+    ]
+   },
+   {
+    "name": "LINE_FUSED",
+    "role": "power",
+    "pins": [
+     "f1.B",
+     "tb1.1"
+    ]
+   },
+   {
+    "name": "NEUTRAL_IN",
+    "role": "power",
+    "pins": [
+     "tb2.1"
+    ]
+   },
+   {
+    "name": "PE_IN",
+    "role": "ground",
+    "pins": [
+     "tb3.1"
+    ]
+   },
+   {
+    "name": "DC_24V_INT",
+    "role": "power",
+    "pins": [
+     "psu1.+24V",
+     "tb4.1"
+    ]
+   },
+   {
+    "name": "DC_24V_OUT",
+    "role": "power",
+    "pins": [
+     "tb4.2"
+    ]
+   },
+   {
+    "name": "DC_0V_INT",
+    "role": "ground",
+    "pins": [
+     "psu1.0V",
+     "tb5.1"
+    ]
+   },
+   {
+    "name": "DC_0V_OUT",
+    "role": "ground",
+    "pins": [
+     "tb5.2"
+    ]
+   },
+   {
+    "name": "LINE_PSU",
+    "role": "power",
+    "pins": [
+     "tb1.2",
+     "psu1.L",
+     "psu2.L"
+    ]
+   },
+   {
+    "name": "NEUTRAL_PSU",
+    "role": "power",
+    "pins": [
+     "tb2.2",
+     "psu1.N",
+     "psu2.N"
+    ]
+   },
+   {
+    "name": "PE_PSU",
+    "role": "ground",
+    "pins": [
+     "tb3.2",
+     "psu1.PE",
+     "psu2.PE"
+    ]
+   },
+   {
+    "name": "DC_12V_INT",
+    "role": "power",
+    "pins": [
+     "psu2.+12V",
+     "tb6.1"
+    ]
+   },
+   {
+    "name": "DC_12V_OUT",
+    "role": "power",
+    "pins": [
+     "tb6.2"
+    ]
+   },
+   {
+    "name": "DC_0V_12V_INT",
+    "role": "ground",
+    "pins": [
+     "psu2.0V",
+     "tb7.1"
+    ]
+   },
+   {
+    "name": "DC_0V_12V_OUT",
+    "role": "ground",
+    "pins": [
+     "tb7.2"
+    ]
+   }
+  ]
+ },
+ "parts": [
+  {
+   "id": "PSU_230V_24V",
+   "width": null,
+   "height": null,
+   "prefix": "PSU",
+   "description": "230VAC to 24VDC power supply unit",
+   "pins": [
+    {
+     "name": "L",
+     "side": "left"
+    },
+    {
+     "name": "N",
+     "side": "left"
+    },
+    {
+     "name": "PE",
+     "side": "left"
+    },
+    {
+     "name": "+24V",
+     "side": "right"
+    },
+    {
+     "name": "0V",
+     "side": "right"
+    }
+   ]
+  },
+  {
+   "id": "PSU_230V_12V",
+   "width": null,
+   "height": null,
+   "prefix": "PSU",
+   "description": "230VAC to 12VDC power supply unit",
+   "pins": [
+    {
+     "name": "L",
+     "side": "left"
+    },
+    {
+     "name": "N",
+     "side": "left"
+    },
+    {
+     "name": "PE",
+     "side": "left"
+    },
+    {
+     "name": "+12V",
+     "side": "right"
+    },
+    {
+     "name": "0V",
+     "side": "right"
+    }
+   ]
+  }
+ ]
+}
