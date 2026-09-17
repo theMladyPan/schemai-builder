@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>schemai-builder</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 <style>
   body { margin: 0; font-family: sans-serif; display: grid; grid-template-rows: 1fr 8rem; height: 100vh; }
   main { display: grid; grid-template-columns: 1fr 4fr; min-height: 0; }
@@ -73,7 +74,7 @@ const applyUpdate = (m) => {
   if (m.sheets) setSheets(m.sheets, m.sheet);
   if (m.sheet) showSheet(m.sheet);
   if (m.message) logLine("LLM: " + m.message);
-  if (m.question) logLine("LLM asks: " + m.question, "log-question");
+  if (m.question && !m.message.includes(m.question)) logLine("LLM asks: " + m.question, "log-question");
   for (const i of m.erc || []) consoleLine("erc " + i.kind + ": " + i.detail);
 };
 

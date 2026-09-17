@@ -109,6 +109,13 @@ def run_turn(
         extra_images=images,
     )
     if output.question:
+        apply_and_record(
+            project,
+            SchematicDiff(),
+            user=text,
+            message=output.message + f" [question: {output.question}]",
+        )
+        save_project(project, project_dir)
         return TurnResult(
             project=project,
             message=output.message,
@@ -129,6 +136,13 @@ def run_turn(
             extra_images=images,
         )
         if output.question:
+            apply_and_record(
+                project,
+                SchematicDiff(),
+                user=text,
+                message=output.message + f" [question: {output.question}]",
+            )
+            save_project(project, project_dir)
             return TurnResult(
                 project=project,
                 message=output.message,

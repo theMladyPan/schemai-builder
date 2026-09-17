@@ -71,7 +71,7 @@ def test_build_prompt_empty_reasons():
 
 def test_history_tail_last_n():
     project = Project(schematic=empty_schematic())
-    for i in range(7):
+    for i in range(12):
         project.history.append(
             HistoryEntry(
                 diff=SchematicDiff(add_components=[AddComponent(library_id="R")]),
@@ -81,9 +81,11 @@ def test_history_tail_last_n():
         )
     tail = history_tail(project)
     lines = tail.split("\n")
-    assert len(lines) == 5
-    assert "u6" in tail
-    assert "u1" not in tail
+    assert len(lines) == 10
+    assert "u11" in tail
+    assert "u2" in tail
+    assert "user='u0'" not in tail
+    assert "user='u1'" not in tail
     assert "+1c -0c +0n" in lines[0]
 
 

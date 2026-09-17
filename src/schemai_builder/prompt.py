@@ -33,7 +33,7 @@ def library_text() -> str:
     return "\n".join(lines)
 
 
-def history_tail(project: Project, n: int = 5) -> str:
+def history_tail(project: Project, n: int = 10) -> str:
     """Last n history entries, one line each."""
     lines = []
     for e in project.history[-n:]:

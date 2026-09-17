@@ -88,14 +88,22 @@ def test_run_turn_invalid_output_then_valid(tmp_path):
     assert len(load_project(dir_).schematic.components) == 1
 
 
+def _q_out():
+    return dict(_ADD_R, question="which sheet?")
+
+
 def test_run_turn_question_skips_diff(tmp_path):
     dir_ = _tmp_project(tmp_path)
-    out = dict(_ADD_R, question="which sheet?")
-    model, _ = _model(responses=[json.dumps(out)])
+    model, _ = _model(responses=[json.dumps(_q_out())])
     result = run_turn(dir_, "add a thing", model=model)
     assert not result.applied
     assert result.question == "which sheet?"
-    assert load_project(dir_).schematic.components == []
+    project = load_project(dir_)
+    assert project.schematic.components == []
+    # question turn is recorded so context survives
+    assert len(project.history) == 1
+    assert project.history[0].user == "add a thing"
+    assert "which sheet?" in project.history[0].message
 
 
 def test_run_turn_retries_bad_diff_once(tmp_path):
@@ -111,12 +119,16 @@ def test_run_turn_retries_bad_diff_once(tmp_path):
 def test_run_turn_retry_question_skips_apply(tmp_path):
     dir_ = _tmp_project(tmp_path)
     bad = {"message": "add", "diff": {"add_components": [{"library_id": "NOPE"}]}}
-    out = dict(_ADD_R, question="which sheet?")
-    model, _ = _model(responses=[json.dumps(bad), json.dumps(out)])
+    model, _ = _model(responses=[json.dumps(bad), json.dumps(_q_out())])
     result = run_turn(dir_, "add a resistor", model=model)
     assert not result.applied
     assert result.question == "which sheet?"
-    assert load_project(dir_).schematic.components == []
+    project = load_project(dir_)
+    assert project.schematic.components == []
+    # retry-question turn is recorded too
+    assert len(project.history) == 1
+    assert project.history[0].user == "add a resistor"
+    assert "which sheet?" in project.history[0].message
 
 
 def test_prompt_has_no_erc_and_includes_user_text(tmp_path):
