@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- Chat uses fetch + textContent on purpose: user/LLM text is never injected as HTML. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>schemai-builder</title>
+<style>
+  body { margin: 0; font-family: sans-serif; display: grid; grid-template-rows: 1fr 8rem; height: 100vh; }
+  main { display: grid; grid-template-columns: 1fr 4fr; min-height: 0; }
+  #chat { display: flex; flex-direction: column; gap: .5rem; padding: .5rem; border-right: 1px solid #ccc; min-height: 0; }
+  #log { flex: 1; overflow-y: auto; border: 1px solid #ddd; padding: .5rem; }
+  .log-user { font-weight: bold; }
+  .log-question { color: #b60; }
+  #view { display: flex; flex-direction: column; gap: .5rem; padding: .5rem; min-height: 0; }
+  #sheet { flex: 1; min-height: 0; background: #fff; }
+  #console { overflow-y: auto; margin: 0; padding: .5rem; border-top: 1px solid #ccc; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <section id="chat">
+    <div id="log"></div>
+    <textarea id="text" rows="3" placeholder="describe the change..."></textarea>
+    <input id="upload" type="file" multiple>
+    <div>
+      <button id="send">Send</button>
+      <button id="review">Review</button>
+    </div>
+  </section>
+  <section id="view">
+    <div>
+      <select id="sheets"></select>
+      <a id="pdf" href="/sheet/1.pdf">Download PDF</a>
+    </div>
+    <img id="sheet" alt="schematic">
+  </section>
+</main>
+<pre id="console"></pre>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+const logLine = (text, cls) => {
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.textContent = text;
+  $("log").appendChild(d);
+  $("log").scrollTop = $("log").scrollHeight;
+};
+const consoleLine = (text) => {
+  $("console").textContent += text + "\n";
+  $("console").scrollTop = $("console").scrollHeight;
+};
+const showSheet = (n) => {
+  $("sheet").src = `/sheet/${n}.svg?t=${Date.now()}`;
+  $("pdf").href = `/sheet/${n}.pdf`;
+};
+const setSheets = (sheets, current) => {
+  const sel = $("sheets");
+  sel.textContent = "";
+  for (const n of sheets) {
+    const o = document.createElement("option");
+    o.value = n;
+    o.textContent = "sheet " + n;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+};
+
+// All updates (LLM message, ERC, sheet refresh) arrive via WS broadcast.
+const applyUpdate = (m) => {
+  if (m.sheets) setSheets(m.sheets, m.sheet);
+  if (m.sheet) showSheet(m.sheet);
+  if (m.message) logLine("LLM: " + m.message);
+  if (m.question) logLine("LLM asks: " + m.question, "log-question");
+  for (const i of m.erc || []) consoleLine("erc " + i.kind + ": " + i.detail);
+};
+
+const send = async () => {
+  const text = $("text").value.trim();
+  if (!text) return;
+  logLine("you: " + text, "log-user");
+  $("text").value = "";
+  const fd = new FormData();
+  fd.append("text", text);
+  for (const f of $("upload").files) fd.append("files", f);
+  $("upload").value = "";
+  const res = await fetch("/chat", { method: "POST", body: fd });
+  if (!res.ok) consoleLine("chat failed: " + res.status);
+};
+$("send").onclick = send;
+$("review").onclick = async () => {
+  logLine("you: (review)", "log-user");
+  const res = await fetch("/review", { method: "POST" });
+  if (!res.ok) consoleLine("review failed: " + res.status);
+};
+$("sheets").onchange = () => showSheet($("sheets").value);
+
+const ws = new WebSocket("ws://" + location.host + "/ws");
+ws.onmessage = (e) => {
+  try { applyUpdate(JSON.parse(e.data)); } catch { /* ignore non-JSON */ }
+};
+
+// Initial paint
+(async () => {
+  const st = await (await fetch("/state")).json();
+  setSheets(st.sheets, st.sheet);
+  showSheet(st.sheet);
+  for (const i of st.erc) consoleLine("erc " + i.kind + ": " + i.detail);
+})();
+</script>
+</body>
+</html>

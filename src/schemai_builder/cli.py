@@ -42,5 +42,16 @@ def main(argv: list[str] | None = None) -> None:
     p_replay.add_argument("script", type=Path)
     p_replay.add_argument("--out", type=Path, required=True)
     p_replay.add_argument("--sleep", type=float, default=None)
+    p_serve = sub.add_parser("serve", help="run the web UI")
+    p_serve.add_argument("--project", type=Path, required=True)
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
-    replay(args.script, args.out, args.sleep)
+    if args.command == "serve":
+        import uvicorn
+
+        from .app import create_app
+
+        uvicorn.run(create_app(args.project), host=args.host, port=args.port)
+    else:
+        replay(args.script, args.out, args.sleep)
