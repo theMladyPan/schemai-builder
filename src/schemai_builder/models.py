@@ -41,6 +41,7 @@ class Component(BaseModel):
     y: int = 0
     rotation: Literal[0, 90, 180, 270] = 0
     mirror: bool = False
+    pinned: bool = False  # True once the user moved it; relayout skips pinned
 
 
 class Net(BaseModel):
@@ -79,22 +80,32 @@ def _coerce_rotation(v: int | str) -> int | str:
     return int(v) if isinstance(v, str) and v.isdigit() else v
 
 
+class PartPin(BaseModel):
+    """One pin of a project-defined part: name and side only, geometry is derived."""
+
+    name: str
+    side: Side
+
+
+class PartDef(BaseModel):
+    """LLM-created project part: id, size, and pinout; drawn as a generic block."""
+
+    id: str
+    width: int | None = None
+    height: int | None = None
+    prefix: str | None = None
+    description: str = ""
+    pins: list[PartPin]
+
+
 class AddComponent(BaseModel):
-    """Diff op: add a component; missing id/ref/position get auto-assigned."""
+    """Diff op: add a component; id/ref auto-assigned, placement is derived."""
 
     library_id: str
     id: str | None = None
     ref: str | None = None
     value: str = ""
     sheet: int = 1
-    x: int | None = None
-    y: int | None = None
-    rotation: Literal[0, 90, 180, 270] = 0
-    mirror: bool = False
-
-    _coerce_rotation = field_validator("rotation", mode="before")(
-        staticmethod(_coerce_rotation)
-    )
 
 
 class MoveComponent(BaseModel):
@@ -129,6 +140,7 @@ class SetSheet(BaseModel):
 class SchematicDiff(BaseModel):
     """A structured diff to apply to a schematic; empty lists by default."""
 
+    add_parts: list[PartDef] = []
     add_sheets: list[Sheet] = []
     add_components: list[AddComponent] = []
     remove_ids: list[str] = []
@@ -163,8 +175,9 @@ class ReasonsPatch(BaseModel):
 
 
 class Project(BaseModel):
-    """A project: current schematic, reasons, and linear history."""
+    """A project: current schematic, parts, reasons, and linear history."""
 
     schematic: Schematic
+    parts: list[PartDef] = []
     reasons: str = ""
     history: list[HistoryEntry] = []

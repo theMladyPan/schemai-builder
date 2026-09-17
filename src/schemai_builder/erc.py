@@ -19,8 +19,9 @@ class ErcIssue(BaseModel):
     detail: str
 
 
-def run_erc(schematic: Schematic) -> list[ErcIssue]:
+def run_erc(schematic: Schematic, lib: dict | None = None) -> list[ErcIssue]:
     """Return advisory ERC issues, ordered shorts, unconnected, single-ended, unused."""
+    lib = lib or LIBRARY
     pin_nets: dict[str, list[str]] = {}
     for net in schematic.nets:
         for pin in net.pins:
@@ -32,7 +33,7 @@ def run_erc(schematic: Schematic) -> list[ErcIssue]:
         if len(nets) > 1:
             issues["short"].append(ErcIssue(kind="short", detail=pin))
     for comp in schematic.components:
-        entry = LIBRARY.get(comp.library_id)
+        entry = lib.get(comp.library_id)
         if entry is None:
             continue
         used = False

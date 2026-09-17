@@ -28,6 +28,13 @@ def test_escapes_ref():
     assert "R<1" not in svg
 
 
+def _place(sch, coords: dict[str, tuple[int, int]]) -> None:
+    """Pin component positions for geometry tests (placement is derived by default)."""
+    by_id = {c.id: c for c in sch.components}
+    for cid, (x, y) in coords.items():
+        by_id[cid].x, by_id[cid].y = x, y
+
+
 def test_two_pin_net_wire_and_label():
     sch = apply_diff(
         empty_schematic(),
@@ -68,13 +75,14 @@ def test_router_avoids_box():
         empty_schematic(),
         SchematicDiff(
             add_components=[
-                AddComponent(library_id="R", x=40, y=100),
-                AddComponent(library_id="C", x=400, y=100),
-                AddComponent(library_id="BOX", x=180, y=80),
+                AddComponent(library_id="R"),
+                AddComponent(library_id="C"),
+                AddComponent(library_id="BOX"),
             ],
             add_nets=[Net(name="n1", pins=["c1.B", "c2.A"])],
         ),
     )
+    _place(sch, {"c1": (40, 100), "c2": (400, 100), "c3": (180, 80)})
     svg = render_sheet(sch, 1)
     m = re.search(r'<polyline points="([^"]+)"', svg)
     assert m
@@ -114,8 +122,9 @@ def test_render_all_keys_and_unknown_sheet():
 def test_box_pin4_inset_from_bottom_edge():
     sch = apply_diff(
         empty_schematic(),
-        SchematicDiff(add_components=[AddComponent(library_id="BOX", x=100, y=100)]),
+        SchematicDiff(add_components=[AddComponent(library_id="BOX")]),
     )
+    sch.components[0].x, sch.components[0].y = 100, 100
     svg = render_sheet(sch, 1)
     # pin 4 tick at world y 240 = 100+140, not on the bottom edge (260)
     assert '<line x1="100" y1="240" x2="94" y2="240"/>' in svg
@@ -126,12 +135,13 @@ def test_wire_between_two_boxes_avoids_bodies():
         empty_schematic(),
         SchematicDiff(
             add_components=[
-                AddComponent(library_id="BOX", x=100, y=100),
-                AddComponent(library_id="BOX", x=400, y=100),
+                AddComponent(library_id="BOX"),
+                AddComponent(library_id="BOX"),
             ],
             add_nets=[Net(name="n1", pins=["u1.1", "u2.1"])],
         ),
     )
+    _place(sch, {"c1": (100, 100), "c2": (400, 100)})
     svg = render_sheet(sch, 1)
     m = re.search(r'<polyline points="([^"]+)"', svg)
     assert m
@@ -151,12 +161,13 @@ def test_net_label_not_inside_box():
         empty_schematic(),
         SchematicDiff(
             add_components=[
-                AddComponent(library_id="BOX", x=100, y=100),
-                AddComponent(library_id="BOX", x=220, y=100),
+                AddComponent(library_id="BOX"),
+                AddComponent(library_id="BOX"),
             ],
             add_nets=[Net(name="n1", pins=["u1.1", "u2.1"])],
         ),
     )
+    _place(sch, {"c1": (100, 100), "c2": (220, 100)})
     svg = render_sheet(sch, 1)
     m = re.search(r"<text[^>]*>n1</text>", svg)
     assert m

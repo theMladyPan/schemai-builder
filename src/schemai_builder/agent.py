@@ -12,6 +12,7 @@ from pydantic_ai.output import PromptedOutput
 from .apply import DiffError, apply_and_record
 from .config.settings import get_settings
 from .erc import ErcIssue, run_erc
+from .library import library_for
 from .models import Project, ReasonsPatch, SchematicDiff
 from .persist import load_project, save_project
 from .prompt import build_prompt, history_tail, library_text, netlist_text, sheet_pngs
@@ -19,11 +20,13 @@ from .reasons import apply_reasons_patch, format_numbered, split_paragraphs
 
 INSTRUCTIONS = """\
 You edit electrical schematics via a structured diff. Components reference \
-library ids only; never invent pinouts. Valid library ids and pins are listed \
-in ## library — do not invent parts or pinouts. If the sheet, net, group, or \
-component \
-is unclear, return a question instead of guessing. Keep reasons.md short: \
-delete stale ADRs, append only what matters. Open nets during creation are fine.\
+library ids only; never invent pinouts. ## library lists built-ins and this \
+project's parts. If a needed part is missing, create it with add_parts — pin \
+names and sides only; placement and symbol drawing are handled for you, and \
+the part becomes reusable. Never send coordinates. If the sheet, net, group, or \
+component is unclear, return a question instead of guessing. Keep reasons.md \
+short: delete stale ADRs, append only what matters. Open nets during creation \
+are fine.\
 """
 
 
@@ -62,7 +65,7 @@ def _run_agent(
     )
     images = [
         BinaryContent(data=png, media_type="image/png")
-        for png in sheet_pngs(project.schematic).values()
+        for png in sheet_pngs(project.schematic, library_for(project)).values()
     ]
     images += extra_images or []
     content: str | list[str | BinaryContent] = [prompt, *images] if images else prompt
@@ -181,7 +184,7 @@ as errors.\
 def review_turn(project_dir: Path, *, model: Model | None = None) -> ReviewResult:
     """Run one read-only review turn: reasons, netlist, ERC, history, sheet PNGs."""
     project = load_project(project_dir)
-    issues = run_erc(project.schematic)
+    issues = run_erc(project.schematic, library_for(project))
     erc = "\n".join(f"{i.kind}: {i.detail}" for i in issues) or "(none)"
     numbered = format_numbered(split_paragraphs(project.reasons)) or "(none)"
     prompt = "\n".join(
@@ -192,7 +195,7 @@ def review_turn(project_dir: Path, *, model: Model | None = None) -> ReviewResul
             "## netlist",
             netlist_text(project.schematic),
             "",
-            library_text(),
+            library_text(project),
             "",
             "## erc",
             erc,

@@ -5,7 +5,7 @@
       "message": "add resistor R1 10k",
       "diff": {
         "add_components": [
-          {"library_id": "R", "id": "r1", "ref": "R1", "value": "10k", "sheet": 1, "x": 80, "y": 100}
+          {"library_id": "R", "id": "r1", "ref": "R1", "value": "10k", "sheet": 1}
         ]
       }
     },
@@ -13,7 +13,7 @@
       "message": "add capacitor C1 100n",
       "diff": {
         "add_components": [
-          {"library_id": "C", "id": "c1", "ref": "C1", "value": "100n", "sheet": 1, "x": 240, "y": 100}
+          {"library_id": "C", "id": "c1", "ref": "C1", "value": "100n", "sheet": 1}
         ]
       }
     },
@@ -21,7 +21,7 @@
       "message": "add ground symbol",
       "diff": {
         "add_components": [
-          {"library_id": "GND", "id": "gnd1", "ref": "GND1", "sheet": 1, "x": 240, "y": 220}
+          {"library_id": "GND", "id": "gnd1", "ref": "GND1", "sheet": 1}
         ]
       }
     },

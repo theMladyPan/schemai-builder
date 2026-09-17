@@ -28,8 +28,9 @@ def test_add_auto_ref_and_place():
     )
     refs = [c.ref for c in sch.components]
     assert refs == ["R1", "C1"]
-    assert (sch.components[0].x, sch.components[0].y) == (100, 100)
-    assert (sch.components[1].x, sch.components[1].y) == (180, 100)
+    # derived placement: unconnected comps stack in the signal band
+    assert (sch.components[0].x, sch.components[0].y) == (60, 300)
+    assert (sch.components[1].x, sch.components[1].y) == (60, 480)
 
 
 def test_unknown_library_id():

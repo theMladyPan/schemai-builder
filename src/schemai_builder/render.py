@@ -12,9 +12,9 @@ GRID = 20
 _TICK = {"left": (-6, 0), "right": (6, 0), "top": (0, -6), "bottom": (0, 6)}
 
 
-def _pin_world(comp: Component, pin: PinDef) -> tuple[int, int]:
+def _pin_world(comp: Component, pin: PinDef, lib: dict) -> tuple[int, int]:
     """World position of a pin: mirror, rotate, then translate to component origin."""
-    entry = LIBRARY[comp.library_id]
+    entry = lib[comp.library_id]
     dx, dy = pin.dx, pin.dy
     if comp.mirror:
         dx = entry.width - dx
@@ -27,21 +27,21 @@ def _pin_world(comp: Component, pin: PinDef) -> tuple[int, int]:
     return comp.x + dy, comp.y + entry.width - dx
 
 
-def _bbox(comp: Component) -> tuple[int, int, int, int]:
-    entry = LIBRARY[comp.library_id]
+def _bbox(comp: Component, lib: dict) -> tuple[int, int, int, int]:
+    entry = lib[comp.library_id]
     w, h = entry.width, entry.height
     if comp.rotation in (90, 270):
         w, h = h, w
     return comp.x, comp.y, comp.x + w, comp.y + h
 
 
-def _find_pin(comp: Component, name: str) -> PinDef | None:
-    return next((p for p in LIBRARY[comp.library_id].pins if p.name == name), None)
+def _find_pin(comp: Component, name: str, lib: dict) -> PinDef | None:
+    return next((p for p in lib[comp.library_id].pins if p.name == name), None)
 
 
-def _pin_connect(comp: Component, pin: PinDef) -> tuple[int, int]:
+def _pin_connect(comp: Component, pin: PinDef, lib: dict) -> tuple[int, int]:
     """Wire attach point: pin position plus tick length, i.e. outside the body."""
-    px, py = _pin_world(comp, pin)
+    px, py = _pin_world(comp, pin, lib)
     ddx, ddy = _TICK[pin.side]
     return px + ddx, py + ddy
 
@@ -57,14 +57,14 @@ def _resolve(schematic: Schematic, comp_id: str) -> Component | None:
     return comp
 
 
-def _net_pins(schematic: Schematic, net_name_pins: list[str], sheet: int):
+def _net_pins(schematic: Schematic, net_name_pins: list[str], sheet: int, lib: dict):
     """Sorted [(x, y, comp_id)] for a net's pins located on this sheet."""
     out = []
     for pref in net_name_pins:
         comp = _resolve(schematic, pref.partition(".")[0])
-        pin = _find_pin(comp, pref.partition(".")[2]) if comp else None
+        pin = _find_pin(comp, pref.partition(".")[2], lib) if comp else None
         if comp is not None and pin is not None and comp.sheet == sheet:
-            out.append((*_pin_connect(comp, pin), comp.id))
+            out.append((*_pin_connect(comp, pin, lib), comp.id))
     out.sort(key=lambda t: (t[0], t[1]))
     return out
 
@@ -127,11 +127,11 @@ def _route(ax, ay, bx, by, role: str, rects: list[tuple]) -> list[tuple[int, int
     return _zpath(ax, ay, bx, by, orders[0], 0)
 
 
-def _free_y(comps, x: int, y: int) -> int:
+def _free_y(comps, lib: dict, x: int, y: int) -> int:
     """Nudge a label y up until it is outside every inflated component bbox."""
     rects = [
         (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
-        for (bx0, by0, bx1, by1) in map(_bbox, comps)
+        for (bx0, by0, bx1, by1) in [_bbox(c, lib) for c in comps]
     ]
     for _ in range(8):
         if not any(r[0] < x < r[2] and r[1] < y < r[3] for r in rects):
@@ -140,16 +140,31 @@ def _free_y(comps, x: int, y: int) -> int:
     return y
 
 
-def _draw_component(comp: Component, parts: list[str]) -> None:
-    entry = LIBRARY[comp.library_id]
-    x, y, x2, y2 = _bbox(comp)
+def _draw_component(comp: Component, parts: list[str], lib: dict) -> None:
+    entry = lib[comp.library_id]
+    x, y, x2, y2 = _bbox(comp, lib)
     kind = comp.library_id
-    if kind in ("R", "L", "BOX"):
-        parts.append(f'<rect x="{x}" y="{y}" width="{x2 - x}" height="{y2 - y}"/>')
-    elif kind == "C":
+    cy = (y + y2) // 2
+    if kind == "C":
         cx = (x + x2) // 2
         parts.append(f'<line x1="{cx - 4}" y1="{y}" x2="{cx - 4}" y2="{y2}"/>')
         parts.append(f'<line x1="{cx + 4}" y1="{y}" x2="{cx + 4}" y2="{y2}"/>')
+    elif kind == "L":
+        # ponytail: three fixed arcs, proper IEC humps if density matters
+        parts.append(
+            f'<path d="M {x},{cy} a 13,13 0 0 1 26,0 a 13,13 0 0 1 26,0 a 13,13 0 0 1 26,0"/>'
+        )
+    elif kind == "FUSE":
+        parts.append(f'<rect x="{x}" y="{y}" width="{x2 - x}" height="{y2 - y}"/>')
+        parts.append(f'<line x1="{x - 6}" y1="{cy}" x2="{x2 + 6}" y2="{cy}"/>')
+    elif kind == "D":
+        parts.append(f'<polygon points="{x + 15},{y} {x + 15},{y2} {x + 50},{cy}"/>')
+        parts.append(f'<line x1="{x + 50}" y1="{y}" x2="{x + 50}" y2="{y2}"/>')
+    elif kind == "SW":
+        parts.append(f'<circle cx="{x + 12}" cy="{cy}" r="3"/>')
+        parts.append(f'<circle cx="{x + 68}" cy="{cy}" r="3"/>')
+        parts.append(f'<line x1="{x + 12}" y1="{cy}" x2="{x + 62}" y2="{cy - 18}"/>')
+        parts.append(f'<line x1="{x + 68}" y1="{cy}" x2="{x2}" y2="{cy}"/>')
     elif kind == "GND":
         px, py = comp.x, comp.y
         for i, half in enumerate((20, 12, 4)):
@@ -163,10 +178,17 @@ def _draw_component(comp: Component, parts: list[str]) -> None:
         parts.append(
             f'<line x1="{px - 12}" y1="{py - 12}" x2="{px + 12}" y2="{py - 12}"/>'
         )
+    elif kind == "TERM":
+        parts.append(f'<circle cx="{x + 20}" cy="{cy}" r="8"/>')
+        parts.append(f'<circle cx="{x + 60}" cy="{cy}" r="8"/>')
+        parts.append(f'<line x1="{x + 28}" y1="{cy}" x2="{x + 52}" y2="{cy}"/>')
     elif kind == "OPC":
-        parts.append(f'<polygon points="{x},{y} {x},{y2} {x2},{(y + y2) // 2}"/>')
+        parts.append(f'<polygon points="{x},{y} {x},{y2} {x2},{cy}"/>')
+    else:
+        # R, BOX, and custom project parts draw as a generic block
+        parts.append(f'<rect x="{x}" y="{y}" width="{x2 - x}" height="{y2 - y}"/>')
     for pin in entry.pins:
-        px, py = _pin_world(comp, pin)
+        px, py = _pin_world(comp, pin, lib)
         ddx, ddy = _TICK[pin.side]
         parts.append(f'<line x1="{px}" y1="{py}" x2="{px + ddx}" y2="{py + ddy}"/>')
     parts.append(
@@ -180,13 +202,16 @@ def _draw_component(comp: Component, parts: list[str]) -> None:
         )
 
 
-def render_sheet(schematic: Schematic, sheet_number: int) -> str:
+def render_sheet(
+    schematic: Schematic, sheet_number: int, lib: dict | None = None
+) -> str:
     """Render one sheet to SVG; raises ValueError for an unknown sheet."""
+    lib = lib or LIBRARY
     sheet = next((s for s in schematic.sheets if s.number == sheet_number), None)
     if sheet is None:
         raise ValueError(f"unknown sheet {sheet_number}")
     comps = [c for c in schematic.components if c.sheet == sheet_number]
-    bboxes = {c.id: _bbox(c) for c in comps}
+    bboxes = {c.id: _bbox(c, lib) for c in comps}
 
     header = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet.width}" '
@@ -205,10 +230,10 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
         parts.append(f'<text x="20" y="24" fill="black">{escape(sheet.title)}</text>')
 
     for comp in comps:
-        _draw_component(comp, parts)
+        _draw_component(comp, parts, lib)
 
     for net in schematic.nets:
-        pins = _net_pins(schematic, net.pins, sheet_number)
+        pins = _net_pins(schematic, net.pins, sheet_number, lib)
         offpage = len(_net_sheets(schematic, net.pins)) >= 2 and bool(pins)
         if offpage:
             ox, oy = sheet.width - 40, pins[0][1]
@@ -222,7 +247,7 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
         if len(pins) == 1:
             if not offpage:
                 px, py, _ = pins[0]
-                my = _free_y(comps, px, py - 6)
+                my = _free_y(comps, lib, px, py - 6)
                 parts.append(
                     f'<text x="{px}" y="{my}" text-anchor="middle" fill="black">'
                     f"{escape(net.name)}</text>"
@@ -241,7 +266,7 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
                 f'<polyline points="{" ".join(f"{px},{py}" for px, py in pts)}"/>'
             )
         mx = (pins[0][0] + pins[1][0]) // 2
-        my = _free_y(comps, mx, (pins[0][1] + pins[1][1]) // 2 - 6)
+        my = _free_y(comps, lib, mx, (pins[0][1] + pins[1][1]) // 2 - 6)
         parts.append(
             f'<text x="{mx}" y="{my}" text-anchor="middle" fill="black">'
             f"{escape(net.name)}</text>"
@@ -252,6 +277,6 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
     return "\n".join(parts)
 
 
-def render_all(schematic: Schematic) -> dict[int, str]:
+def render_all(schematic: Schematic, lib: dict | None = None) -> dict[int, str]:
     """Render every sheet, keyed by sheet number."""
-    return {s.number: render_sheet(schematic, s.number) for s in schematic.sheets}
+    return {s.number: render_sheet(schematic, s.number, lib) for s in schematic.sheets}

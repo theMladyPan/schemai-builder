@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from .agent import run_turn, review_turn
 from .apply import DiffError
 from .erc import run_erc
+from .library import library_for
 from .models import Project, empty_schematic
 from .pdf import svg_to_pdf
 from .persist import load_project, save_project
@@ -38,12 +39,13 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
 
     def state() -> dict[str, Any]:
         """Current sheet numbers, active sheet, and advisory ERC issues."""
-        schematic = load_project(project_dir).schematic
+        project = load_project(project_dir)
+        schematic = project.schematic
         sheets = [s.number for s in schematic.sheets]
         return {
             "sheets": sheets,
             "sheet": sheets[0] if sheets else 1,
-            "erc": [i.model_dump() for i in run_erc(schematic)],
+            "erc": [i.model_dump() for i in run_erc(schematic, library_for(project))],
         }
 
     @app.get("/")

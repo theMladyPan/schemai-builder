@@ -41,11 +41,7 @@ def _model(responses: list[str] | None = None, prompts: list[str] | None = None)
 
 _ADD_R = {
     "message": "added resistor",
-    "diff": {
-        "add_components": [
-            {"library_id": "R", "id": "rx", "ref": "R9", "x": 80, "y": 200}
-        ]
-    },
+    "diff": {"add_components": [{"library_id": "R", "id": "rx", "ref": "R9"}]},
 }
 
 
@@ -59,7 +55,8 @@ def test_run_turn_applies_diff(tmp_path):
     project = load_project(dir_)
     assert len(project.schematic.components) == 1
     c = project.schematic.components[0]
-    assert (c.library_id, c.id, c.ref, c.x, c.y) == ("R", "rx", "R9", 80, 200)
+    assert (c.library_id, c.id, c.ref) == ("R", "rx", "R9")
+    assert (c.x, c.y) == (60, 300)  # derived placement
     assert (dir_ / "render" / "sheet-1.svg").exists()
     assert len(project.history) == 1
     assert project.history[0].user == "add a resistor"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from .library import LIBRARY
+from .layout import relayout
+from .library import LIBRARY, _part_entry, library_for
 from .models import (
     AddComponent,
     Component,
@@ -34,16 +35,11 @@ def _next_ref(schematic: Schematic, prefix: str) -> str:
     return f"{prefix}{n}"
 
 
-def _autoplaced(schematic: Schematic) -> tuple[int, int]:
-    occupied = {(c.x, c.y) for c in schematic.components}
-    k = 0
-    while (100 + k * GRID, 100) in occupied:
-        k += 1
-    return 100 + k * GRID, 100
-
-
-def _add_component(schematic: Schematic, op: AddComponent, errors: list[str]) -> None:
-    entry = LIBRARY.get(op.library_id)
+def _add_component(
+    schematic: Schematic, op: AddComponent, errors: list[str], lib: dict
+) -> None:
+    """Append a component; placement is derived by relayout, never stored in the op."""
+    entry = lib.get(op.library_id)
     if entry is None:
         errors.append(f"unknown library_id {op.library_id!r}")
         return
@@ -66,11 +62,6 @@ def _add_component(schematic: Schematic, op: AddComponent, errors: list[str]) ->
     elif ref in {c.ref for c in schematic.components}:
         errors.append(f"duplicate ref {ref!r}")
         return
-    x, y = op.x, op.y
-    if x is None or y is None:
-        ax, ay = _autoplaced(schematic)
-        x = x if x is not None else ax
-        y = y if y is not None else ay
     schematic.components.append(
         Component(
             id=comp_id,
@@ -78,17 +69,16 @@ def _add_component(schematic: Schematic, op: AddComponent, errors: list[str]) ->
             ref=ref,
             value=op.value,
             sheet=op.sheet,
-            x=x,
-            y=y,
-            rotation=op.rotation,
-            mirror=op.mirror,
         )
     )
 
 
-def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
+def apply_diff(
+    schematic: Schematic, diff: SchematicDiff, library: dict | None = None
+) -> Schematic:
     """Apply a diff to a copy of the schematic; raises DiffError without partial application."""
     out = deepcopy(schematic)
+    lib = library or LIBRARY
     errors: list[str] = []
     by_id = {c.id: c for c in out.components}
     by_ref = {c.ref.lower(): c for c in out.components}
@@ -100,7 +90,7 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
             out.sheets.append(sheet)
 
     for op in diff.add_components:
-        _add_component(out, op, errors)
+        _add_component(out, op, errors, lib)
         by_id = {c.id: c for c in out.components}
         by_ref = {c.ref.lower(): c for c in out.components}
 
@@ -131,7 +121,7 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
         for pin in net.pins:
             comp_id, _, pin_name = pin.partition(".")
             comp = by_id.get(comp_id) or by_ref.get(comp_id.lower())
-            entry = LIBRARY.get(comp.library_id) if comp else None
+            entry = lib.get(comp.library_id) if comp else None
             if (
                 comp is None
                 or entry is None
@@ -155,6 +145,17 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
             comp.rotation = op.rotation
         if op.mirror is not None:
             comp.mirror = op.mirror
+        comp.pinned = True  # explicit user placement survives relayout
+
+    for op in diff.move_groups:
+        for comp_id in op.ids:
+            comp = by_id.get(comp_id)
+            if comp is None:
+                errors.append(f"unknown component id {comp_id!r}")
+            else:
+                comp.x += op.dx
+                comp.y += op.dy
+                comp.pinned = True
 
     for op in diff.move_groups:
         for comp_id in op.ids:
@@ -176,14 +177,37 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
 
     if errors:
         raise DiffError(errors)
+    relayout(out, lib)
     return out
+
+
+def _validate_parts(project, diff: SchematicDiff, errors: list[str]) -> None:
+    """Validate add_parts against built-ins and existing project parts."""
+    for part in diff.add_parts:
+        if part.id in LIBRARY:
+            errors.append(f"part id {part.id!r} conflicts with built-in library")
+        elif part.id in {p.id for p in project.parts}:
+            errors.append(f"duplicate part id {part.id!r}")
+        elif "." in part.id:
+            errors.append(f"invalid part id {part.id!r}")
+        elif not part.pins:
+            errors.append(f"part {part.id!r} has no pins")
+        elif len({p.name for p in part.pins}) != len(part.pins):
+            errors.append(f"part {part.id!r} has duplicate pin names")
 
 
 def apply_and_record(
     project: Project, diff: SchematicDiff, user: str = "", message: str = ""
 ) -> Project:
-    """Apply a diff and append a HistoryEntry to the project history."""
-    project.schematic = apply_diff(project.schematic, diff)
+    """Apply a diff (parts first), relayout, and append a HistoryEntry."""
+    errors: list[str] = []
+    _validate_parts(project, diff, errors)
+    if errors:
+        raise DiffError(errors)
+    library = library_for(project)
+    library.update({p.id: _part_entry(p) for p in diff.add_parts})
+    project.schematic = apply_diff(project.schematic, diff, library=library)
+    project.parts += diff.add_parts
     project.history.append(HistoryEntry(diff=diff, user=user, message=message))
     return project
 
@@ -195,7 +219,13 @@ def revert(project: Project, n: int = 1) -> Project:
         raise ValueError(f"cannot revert {n} diffs")
     project.history = project.history[:-n] if n else project.history
     schematic = empty_schematic()
+    project.parts = []
     for entry in project.history:
-        schematic = apply_diff(schematic, entry.diff)
+        errors: list[str] = []
+        _validate_parts(project, entry.diff, errors)
+        if errors:
+            raise DiffError(errors)
+        project.parts += entry.diff.add_parts
+        schematic = apply_diff(schematic, entry.diff, library=library_for(project))
     project.schematic = schematic
     return project

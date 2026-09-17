@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .apply import apply_and_record
+from .library import library_for
 from .models import Project, SchematicDiff, empty_schematic
 from .render import render_all
 
@@ -30,7 +31,7 @@ def replay(script: Path, out_dir: Path, sleep: float | None = None) -> Project:
                 f"invalid diff in step {step.get('message')!r}: {e}"
             ) from e
         project = apply_and_record(project, diff)
-        for number, svg in render_all(project.schematic).items():
+        for number, svg in render_all(project.schematic, library_for(project)).items():
             (out_dir / f"sheet-{number}.svg").write_text(svg)
     return project
 

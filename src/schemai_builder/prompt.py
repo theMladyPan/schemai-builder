@@ -22,13 +22,19 @@ def netlist_text(schematic: Schematic) -> str:
     return "\n".join(lines)
 
 
-def library_text() -> str:
-    """Catalog of valid library ids and their pin names."""
+def library_text(project: Project | None = None) -> str:
+    """Catalog of valid library ids and their pin names; static core plus project parts."""
     lines = ["## library", "components must use these ids; pins per part:"]
     lines += [
         f"{entry.id}: pins {','.join(p.name for p in entry.pins)}"
         for entry in LIBRARY.values()
     ]
+    if project is not None:
+        lines += [
+            f"{part.id}: pins {','.join(p.name for p in part.pins)}"
+            + (f" — {part.description}" if part.description else "")
+            for part in project.parts
+        ]
     lines.append('net pin refs use "component_id.pin", e.g. r1.A')
     return "\n".join(lines)
 
@@ -57,7 +63,7 @@ def build_prompt(project: Project, user_text: str) -> str:
             "## netlist",
             netlist_text(project.schematic),
             "",
-            library_text(),
+            library_text(project),
             "",
             "## recent",
             history_tail(project),
@@ -81,10 +87,10 @@ def svg_to_png(svg: str) -> bytes | None:
         return None
 
 
-def sheet_pngs(schematic: Schematic) -> dict[int, bytes]:
+def sheet_pngs(schematic: Schematic, lib: dict | None = None) -> dict[int, bytes]:
     """Render every sheet to PNG; omit sheets that fail to rasterize."""
     pngs = {}
-    for number, svg in render_all(schematic).items():
+    for number, svg in render_all(schematic, lib).items():
         png = svg_to_png(svg)
         if png is not None:
             pngs[number] = png
