@@ -7,7 +7,9 @@ authors = [
     { name = "theMladyPan", email = "stanislav@rubint.sk" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "pydantic>=2.13.5",
+]
 
 [project.scripts]
 schemai-builder = "schemai_builder:main"
@@ -15,3 +17,9 @@ schemai-builder = "schemai_builder:main"
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
