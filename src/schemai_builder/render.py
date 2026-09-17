@@ -39,25 +39,41 @@ def _find_pin(comp: Component, name: str) -> PinDef | None:
     return next((p for p in LIBRARY[comp.library_id].pins if p.name == name), None)
 
 
+def _pin_connect(comp: Component, pin: PinDef) -> tuple[int, int]:
+    """Wire attach point: pin position plus tick length, i.e. outside the body."""
+    px, py = _pin_world(comp, pin)
+    ddx, ddy = _TICK[pin.side]
+    return px + ddx, py + ddy
+
+
+def _resolve(schematic: Schematic, comp_id: str) -> Component | None:
+    """Find a component by id or case-insensitive ref (same rules as apply.py)."""
+    by_id = {c.id: c for c in schematic.components}
+    comp = by_id.get(comp_id)
+    if comp is None:
+        comp = next(
+            (c for c in schematic.components if c.ref.lower() == comp_id.lower()), None
+        )
+    return comp
+
+
 def _net_pins(schematic: Schematic, net_name_pins: list[str], sheet: int):
     """Sorted [(x, y, comp_id)] for a net's pins located on this sheet."""
-    by_id = {c.id: c for c in schematic.components}
     out = []
     for pref in net_name_pins:
-        comp = by_id.get(pref.partition(".")[0])
+        comp = _resolve(schematic, pref.partition(".")[0])
         pin = _find_pin(comp, pref.partition(".")[2]) if comp else None
         if comp is not None and pin is not None and comp.sheet == sheet:
-            out.append((*_pin_world(comp, pin), comp.id))
+            out.append((*_pin_connect(comp, pin), comp.id))
     out.sort(key=lambda t: (t[0], t[1]))
     return out
 
 
 def _net_sheets(schematic: Schematic, net_name_pins: list[str]) -> set[int]:
-    by_id = {c.id: c for c in schematic.components}
     return {
-        by_id[p.partition(".")[0]].sheet
+        comp.sheet
         for p in net_name_pins
-        if p.partition(".")[0] in by_id
+        if (comp := _resolve(schematic, p.partition(".")[0])) is not None
     }
 
 
@@ -103,8 +119,25 @@ def _route(ax, ay, bx, by, role: str, rects: list[tuple]) -> list[tuple[int, int
             pts = _zpath(ax, ay, bx, by, order, off)
             if not _hits(pts, rects):
                 return pts
+    for y in (min(r[1] for r in rects) - GRID, max(r[3] for r in rects) + GRID):
+        pts = [(ax, ay), (ax, y), (bx, y), (bx, by)]
+        if not _hits(pts, rects):
+            return pts
     # ponytail: no A*, accept leftover overlaps
     return _zpath(ax, ay, bx, by, orders[0], 0)
+
+
+def _free_y(comps, x: int, y: int) -> int:
+    """Nudge a label y up until it is outside every inflated component bbox."""
+    rects = [
+        (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
+        for (bx0, by0, bx1, by1) in map(_bbox, comps)
+    ]
+    for _ in range(8):
+        if not any(r[0] < x < r[2] and r[1] < y < r[3] for r in rects):
+            return y
+        y -= 12
+    return y
 
 
 def _draw_component(comp: Component, parts: list[str]) -> None:
@@ -189,25 +222,26 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
         if len(pins) == 1:
             if not offpage:
                 px, py, _ = pins[0]
+                my = _free_y(comps, px, py - 6)
                 parts.append(
-                    f'<text x="{px}" y="{py - 6}" text-anchor="middle" fill="black">'
+                    f'<text x="{px}" y="{my}" text-anchor="middle" fill="black">'
                     f"{escape(net.name)}</text>"
                 )
             continue
         if len(pins) < 2:
             continue
         for (x1, y1, ida), (x2, y2, idb) in pairwise(pins):
+            # endpoint bodies are obstacles too, only their stub tips are free
             rects = [
                 (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
                 for cid, (bx0, by0, bx1, by1) in bboxes.items()
-                if cid not in (ida, idb)
             ]
             pts = _route(x1, y1, x2, y2, net.role, rects)
             parts.append(
                 f'<polyline points="{" ".join(f"{px},{py}" for px, py in pts)}"/>'
             )
         mx = (pins[0][0] + pins[1][0]) // 2
-        my = (pins[0][1] + pins[1][1]) // 2 - 6
+        my = _free_y(comps, mx, (pins[0][1] + pins[1][1]) // 2 - 6)
         parts.append(
             f'<text x="{mx}" y="{my}" text-anchor="middle" fill="black">'
             f"{escape(net.name)}</text>"

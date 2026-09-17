@@ -35,10 +35,11 @@ LIBRARY: dict[str, LibraryEntry] = {
             width=120,
             height=160,
             pins=[
-                PinDef(name=str(n), dx=0, dy=n * 40, side="left") for n in range(1, 5)
+                PinDef(name=str(n), dx=0, dy=20 + (n - 1) * 40, side="left")
+                for n in range(1, 5)
             ]
             + [
-                PinDef(name=str(n), dx=120, dy=(n - 5) * 40, side="right")
+                PinDef(name=str(n), dx=120, dy=20 + (n - 5) * 40, side="right")
                 for n in range(5, 9)
             ],
         ),

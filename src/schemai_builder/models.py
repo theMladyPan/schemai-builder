@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 Side = Literal["left", "right", "top", "bottom"]
 Role = Literal["power", "ground", "signal", "bus", "feedback"]
@@ -73,6 +73,12 @@ def empty_schematic() -> Schematic:
     return Schematic(sheets=[Sheet(number=1)], components=[], nets=[])
 
 
+def _coerce_rotation(v: int | str) -> int | str:
+    """Accept string rotations like "90" from LLM output; keep the Literal after."""
+
+    return int(v) if isinstance(v, str) and v.isdigit() else v
+
+
 class AddComponent(BaseModel):
     """Diff op: add a component; missing id/ref/position get auto-assigned."""
 
@@ -86,6 +92,10 @@ class AddComponent(BaseModel):
     rotation: Literal[0, 90, 180, 270] = 0
     mirror: bool = False
 
+    _coerce_rotation = field_validator("rotation", mode="before")(
+        staticmethod(_coerce_rotation)
+    )
+
 
 class MoveComponent(BaseModel):
     """Diff op: move/rotate/mirror one component; None fields unchanged."""
@@ -95,6 +105,10 @@ class MoveComponent(BaseModel):
     y: int | None = None
     rotation: Literal[0, 90, 180, 270] | None = None
     mirror: bool | None = None
+
+    _coerce_rotation = field_validator("rotation", mode="before")(
+        staticmethod(_coerce_rotation)
+    )
 
 
 class MoveGroup(BaseModel):

@@ -109,3 +109,57 @@ def test_render_all_keys_and_unknown_sheet():
     assert set(out) == {1, 2}
     with pytest.raises(ValueError):
         render_sheet(sch, 3)
+
+
+def test_box_pin4_inset_from_bottom_edge():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(add_components=[AddComponent(library_id="BOX", x=100, y=100)]),
+    )
+    svg = render_sheet(sch, 1)
+    # pin 4 tick at world y 240 = 100+140, not on the bottom edge (260)
+    assert '<line x1="100" y1="240" x2="94" y2="240"/>' in svg
+
+
+def test_wire_between_two_boxes_avoids_bodies():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[
+                AddComponent(library_id="BOX", x=100, y=100),
+                AddComponent(library_id="BOX", x=400, y=100),
+            ],
+            add_nets=[Net(name="n1", pins=["u1.1", "u2.1"])],
+        ),
+    )
+    svg = render_sheet(sch, 1)
+    m = re.search(r'<polyline points="([^"]+)"', svg)
+    assert m
+    pts = [tuple(map(int, p.split(","))) for p in m.group(1).split()]
+    # box bodies 100..220 and 400..520 x 100..260, inflated +4
+    bodies = [(96, 96, 224, 264), (396, 96, 524, 264)]
+    for (x1, y1), (x2, y2) in pairwise(pts):
+        for bx0, by0, bx1, by1 in bodies:
+            if y1 == y2:
+                assert not (by0 < y1 < by1 and min(x1, x2) < bx1 and max(x1, x2) > bx0)
+            else:
+                assert not (bx0 < x1 < bx1 and min(y1, y2) < by1 and max(y1, y2) > by0)
+
+
+def test_net_label_not_inside_box():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[
+                AddComponent(library_id="BOX", x=100, y=100),
+                AddComponent(library_id="BOX", x=220, y=100),
+            ],
+            add_nets=[Net(name="n1", pins=["u1.1", "u2.1"])],
+        ),
+    )
+    svg = render_sheet(sch, 1)
+    m = re.search(r"<text[^>]*>n1</text>", svg)
+    assert m
+    y = int(re.search(r'y="(\d+)"', m.group(0)).group(1))
+    # label y must be outside the box band (96..264 inflated)
+    assert not 96 < y < 264

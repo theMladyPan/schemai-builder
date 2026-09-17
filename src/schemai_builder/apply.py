@@ -91,6 +91,7 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
     out = deepcopy(schematic)
     errors: list[str] = []
     by_id = {c.id: c for c in out.components}
+    by_ref = {c.ref.lower(): c for c in out.components}
 
     for sheet in diff.add_sheets:
         if sheet.number in {s.number for s in out.sheets}:
@@ -101,13 +102,16 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
     for op in diff.add_components:
         _add_component(out, op, errors)
         by_id = {c.id: c for c in out.components}
+        by_ref = {c.ref.lower(): c for c in out.components}
 
     for comp_id in diff.remove_ids:
         if comp_id not in by_id:
             errors.append(f"unknown component id {comp_id!r}")
         else:
-            del out.components[out.components.index(by_id[comp_id])]
+            comp = by_id[comp_id]
+            del out.components[out.components.index(comp)]
             del by_id[comp_id]
+            del by_ref[comp.ref.lower()]
             for net in out.nets:
                 net.pins = [p for p in net.pins if not p.startswith(f"{comp_id}.")]
 
@@ -126,7 +130,7 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
         before = len(errors)
         for pin in net.pins:
             comp_id, _, pin_name = pin.partition(".")
-            comp = by_id.get(comp_id)
+            comp = by_id.get(comp_id) or by_ref.get(comp_id.lower())
             entry = LIBRARY.get(comp.library_id) if comp else None
             if (
                 comp is None

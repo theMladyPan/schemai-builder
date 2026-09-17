@@ -8,6 +8,7 @@ from schemai_builder.apply import DiffError, apply_and_record, apply_diff, rever
 from schemai_builder.models import (
     AddComponent,
     Component,
+    MoveComponent,
     Net,
     Project,
     SchematicDiff,
@@ -148,6 +149,46 @@ def test_load_project_bad_library_id(tmp_path):
     (tmp_path / "schematic.json").write_text(sch.model_dump_json())
     with pytest.raises(ValueError, match="NOPE"):
         load_project(tmp_path)
+
+
+def test_add_rotation_string_coerced():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(add_components=[AddComponent(library_id="BOX", rotation="0")]),
+    )
+    assert sch.components[0].rotation == 0
+
+
+def test_move_rotation_string_coerced():
+    sch = apply_diff(
+        empty_schematic(), SchematicDiff(add_components=[AddComponent(library_id="R")])
+    )
+    sch = apply_diff(
+        sch, SchematicDiff(move_components=[MoveComponent(id="c1", rotation="90")])
+    )
+    assert sch.components[0].rotation == 90
+
+
+def test_net_pin_lookup_by_ref():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[AddComponent(library_id="BOX", ref="T1")],
+            add_nets=[Net(name="n1", pins=["t1.1", "t1.5"])],
+        ),
+    )
+    assert sch.nets[0].pins == ["t1.1", "t1.5"]
+
+
+def test_net_pin_unknown_ref_or_component_rejected():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(add_components=[AddComponent(library_id="BOX", ref="T1")]),
+    )
+    with pytest.raises(DiffError):
+        apply_diff(sch, SchematicDiff(add_nets=[Net(name="n1", pins=["t1.99"])]))
+    with pytest.raises(DiffError):
+        apply_diff(sch, SchematicDiff(add_nets=[Net(name="n2", pins=["xyz.1"])]))
 
 
 def test_duplicate_ref_rejected():
