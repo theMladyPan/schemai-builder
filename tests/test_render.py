@@ -169,8 +169,12 @@ def test_net_label_not_inside_box():
     )
     _place(sch, {"c1": (100, 100), "c2": (220, 100)})
     svg = render_sheet(sch, 1)
-    m = re.search(r"<text[^>]*>n1</text>", svg)
+    m = re.search(r'<text x="([\d.]+)" y="(\d+)" text-anchor="(\w+)"[^>]*>n1</text>', svg)
     assert m
-    y = int(re.search(r'y="(\d+)"', m.group(0)).group(1))
-    # label y must be outside the box band (96..264 inflated)
-    assert not 96 < y < 264
+    x, y, anchor = float(m.group(1)), int(m.group(2)), m.group(3)
+    w = max(12, len("n1") * 7)
+    x0 = x - w if anchor == "end" else x if anchor == "start" else x - w / 2
+    label = (x0, y - 12, x0 + w, y + 2)
+    bodies = [(96, 96, 224, 264), (216, 96, 344, 264)]
+    for b in bodies:
+        assert not (label[0] < b[2] and b[0] < label[2] and label[1] < b[3] and b[1] < label[3])

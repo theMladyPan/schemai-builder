@@ -126,24 +126,42 @@ def _zpath(ax, ay, bx, by, order: str, off: int) -> list[tuple[int, int]]:
     return out
 
 
-def _route(ax, ay, bx, by, role: str, rects: list[tuple]) -> list[tuple[int, int]]:
+def _route(
+    ax, ay, bx, by, role: str, rects: list[tuple], ylimit: tuple[int, int] | None = None
+) -> list[tuple[int, int]]:
     if role == "power":
         orders = ("vh", "hv")
     elif role == "ground":
         orders = ("vh", "hv") if by >= ay else ("hv", "vh")
     else:
         orders = ("hv", "vh")
+
+    def lane_ok(y: int) -> bool:
+        return ylimit is None or ylimit[0] <= y <= ylimit[1]
+
     for off in (0, GRID, -GRID, 2 * GRID, -2 * GRID):
         for order in orders:
             pts = _zpath(ax, ay, bx, by, order, off)
-            if not _hits(pts, rects):
+            if not _hits(pts, rects) and all(lane_ok(p[1]) for p in pts):
                 return pts
-    for y in (min(r[1] for r in rects) - GRID, max(r[3] for r in rects) + GRID):
+    lo = max((min(r[1] for r in rects) - GRID), ylimit[0] if ylimit else 0)
+    hi = min(max(r[3] for r in rects) + GRID, ylimit[1] if ylimit else 10**6)
+    for y in (lo, hi):
+        if not lane_ok(y):
+            continue
         pts = [(ax, ay), (ax, y), (bx, y), (bx, by)]
         if not _hits(pts, rects):
             return pts
     # ponytail: no A*, accept leftover overlaps
     return _zpath(ax, ay, bx, by, orders[0], 0)
+
+
+def _segment_box(p1: tuple, p2: tuple, pad: int = 3) -> tuple:
+    """Thin obstacle rectangle along one wire segment; labels avoid these."""
+    (x1, y1), (x2, y2) = p1, p2
+    if y1 == y2:
+        return (min(x1, x2) - 2, y1 - pad, max(x1, x2) + 2, y1 + pad)
+    return (x1 - pad, min(y1, y2) - 2, x1 + pad, max(y1, y2) + 2)
 
 
 def _overlap(a: tuple, b: tuple) -> bool:
@@ -172,25 +190,55 @@ def _seed_occupied(comps, lib: dict) -> list[tuple]:
     return occ
 
 
-def _place_label(occupied: list[tuple], candidates: list[tuple], text: str) -> tuple:
-    """First collision-free candidate wins; otherwise nudge the last one upward."""
+def _place_label(
+    occupied: list[tuple],
+    candidates: list[tuple],
+    text: str,
+    bounds: tuple | None = None,
+) -> tuple:
+    """First collision-free candidate wins; else spiral outward to a free box."""
+
+    def free(box: tuple) -> bool:
+        return not any(_overlap(box, o) for o in occupied)
+
+    def in_bounds(box: tuple) -> bool:
+        return bounds is None or (
+            box[0] >= 2
+            and box[1] >= 2
+            and box[2] <= bounds[0] - 2
+            and box[3] <= bounds[1] - 2
+        )
+
     for x, y, anchor in candidates:
         box = _text_box(x, y, text, anchor)
-        if not any(_overlap(box, o) for o in occupied):
+        if free(box) and in_bounds(box):
             occupied.append(box)
             return x, y, anchor
     x, y, anchor = candidates[-1]
-    for _ in range(8):
-        box = _text_box(x, y, text, anchor)
-        if not any(_overlap(box, o) for o in occupied):
-            break
-        y -= 12
-    occupied.append(box)
+    w = max(12, len(text) * 7)
+    # ponytail: coarse spiral; real overflow packing if sheets get crowded
+    for r in range(1, 9):
+        for dx, dy in (
+            (0, -r),
+            (-r, 0),
+            (r, 0),
+            (0, r),
+            (-r, -r),
+            (r, -r),
+            (-r, r),
+            (r, r),
+        ):
+            nx, ny = x + dx * 14, y + dy * 14
+            box = _text_box(nx, ny, text, anchor)
+            if free(box) and in_bounds(box):
+                occupied.append(box)
+                return nx, ny, anchor
+    occupied.append(_text_box(x, y, text, anchor))
     return x, y, anchor
 
 
 def _draw_component(
-    comp: Component, parts: list[str], lib: dict, occupied: list
+    comp: Component, parts: list[str], lib: dict, occupied: list, bounds: tuple
 ) -> None:
     entry = lib[comp.library_id]
     x, y, x2, y2 = _bbox(comp, lib)
@@ -244,8 +292,9 @@ def _draw_component(
         parts.append(f'<line x1="{px}" y1="{py}" x2="{px + ddx}" y2="{py + ddy}"/>')
     rx, ry, ra = _place_label(
         occupied,
-        [((x + x2) / 2, y - 4, "middle"), (x - 10, cy, "end"), (x2 + 10, cy, "start")],
+        [((x + x2) / 2, y - 8, "middle"), (x - 10, cy, "end"), (x2 + 10, cy, "start")],
         comp.ref,
+        bounds,
     )
     parts.append(
         f'<text x="{rx}" y="{ry}" text-anchor="{ra}" fill="black">{escape(comp.ref)}</text>'
@@ -254,11 +303,12 @@ def _draw_component(
         vx, vy, va = _place_label(
             occupied,
             [
-                ((x + x2) / 2, y2 + 14, "middle"),
+                ((x + x2) / 2, y2 + 16, "middle"),
                 (x2 + 10, cy, "start"),
                 (x - 10, cy, "end"),
             ],
             comp.value,
+            bounds,
         )
         parts.append(
             f'<text x="{vx}" y="{vy}" text-anchor="{va}" fill="black">{escape(comp.value)}</text>'
@@ -293,8 +343,56 @@ def render_sheet(
         parts.append(f'<text x="20" y="24" fill="black">{escape(sheet.title)}</text>')
 
     occupied = _seed_occupied(comps, lib)
+
+    # column envelope: >=3 near-aligned bodies act as one routing obstacle,
+    # so trunks go around terminal banks instead of threading their gaps
+    cols: dict[int, list[tuple]] = {}
+    for bx0, by0, bx1, by1 in bboxes.values():
+        cols.setdefault(round(bx0 / 20), []).append((bx0, by0, bx1, by1))
+    envelopes = [
+        (
+            min(x[0] for x in g) - 10,
+            min(x[1] for x in g) - 10,
+            max(x[2] for x in g) + 10,
+            max(x[3] for x in g) + 10,
+        )
+        for g in cols.values()
+        if len(g) >= 3
+    ]
+
+    # pass 1: route every multi-pin net; collect wire boxes
+    ylimit = (GRID, sheet.height - GRID)
+    infl = [(a - 10, b - 10, c + 10, d + 10) for a, b, c, d in bboxes.values()]
+    net_wires: dict[str, list] = {}
+    wire_boxes: list[tuple] = []
+    for net in schematic.nets:
+        pins = _net_pins(schematic, net.pins, sheet_number, lib)
+        if len(pins) < 2:
+            continue
+        pts_all = []
+        for (x1, y1, _ida, sa), (x2, y2, _idb, sb) in pairwise(pins):
+            d1, d2 = _DIR[sa], _DIR[sb]
+            sx, sy = x1 + GRID * d1[0], y1 + GRID * d1[1]
+            ex, ey = x2 + GRID * d2[0], y2 + GRID * d2[1]
+            body = _route(sx, sy, ex, ey, net.role, infl + envelopes, ylimit)
+            pts = [(x1, y1), (sx, sy), *body[1:-1], (ex, ey), (x2, y2)]
+            pts_all.append(pts)
+            for p, q in zip(pts, pts[1:]):
+                wire_boxes.append(_segment_box(p, q))
+        net_wires[net.name] = pts_all
+
+    # pass 2: component bodies + ref/value labels (they must avoid wires too)
+    occupied += wire_boxes
     for comp in comps:
-        _draw_component(comp, parts, lib, occupied)
+        _draw_component(comp, parts, lib, occupied, (sheet.width, sheet.height))
+
+    for pts_all in net_wires.values():
+        for pts in pts_all:
+            parts.append(
+                f'<polyline points="{" ".join(f"{px},{py}" for px, py in pts)}"/>'
+            )
+
+    # pass 3: net labels see bodies, every wire, and each other
     for net in schematic.nets:
         pins = _net_pins(schematic, net.pins, sheet_number, lib)
         offpage = len(_net_sheets(schematic, net.pins)) >= 2 and bool(pins)
@@ -304,7 +402,10 @@ def render_sheet(
                 f'<polygon points="{ox},{oy - 8} {ox},{oy + 8} {ox + 16},{oy}"/>'
             )
             lx, ly, _ = _place_label(
-                occupied, [(ox - 6, oy + 4, "end"), (ox - 6, oy + 20, "end")], net.name
+                occupied,
+                [(ox - 6, oy + 4, "end"), (ox - 6, oy + 20, "end")],
+                net.name,
+                (sheet.width, sheet.height),
             )
             parts.append(
                 f'<text x="{lx}" y="{ly}" text-anchor="end" fill="black">'
@@ -325,6 +426,7 @@ def render_sheet(
                         (px, py - 6, "middle"),
                     ],
                     net.name,
+                    (sheet.width, sheet.height),
                 )
                 parts.append(
                     f'<text x="{lx}" y="{ly}" text-anchor="{la}" fill="black">'
@@ -333,20 +435,8 @@ def render_sheet(
             continue
         if len(pins) < 2:
             continue
-        routes = []
-        for (x1, y1, ida, _sa), (x2, y2, idb, _sb) in pairwise(pins):
-            # endpoint bodies are obstacles too, only their stub tips are free
-            rects = [
-                (bx0 - 4, by0 - 4, bx1 + 4, by1 + 4)
-                for cid, (bx0, by0, bx1, by1) in bboxes.items()
-            ]
-            pts = _route(x1, y1, x2, y2, net.role, rects)
-            routes.append(pts)
-            parts.append(
-                f'<polyline points="{" ".join(f"{px},{py}" for px, py in pts)}"/>'
-            )
         cands = []
-        for pts in routes:
+        for pts in net_wires[net.name]:
             for (ax, ay), (bx, by) in pairwise(pts):
                 if ay == by:
                     cands.append(((ax + bx) // 2, ay - 8, "middle"))
@@ -354,7 +444,9 @@ def render_sheet(
                     cands.append((ax - 10, (ay + by) // 2, "end"))
         mx = (pins[0][0] + pins[1][0]) // 2
         cands.append((mx, (pins[0][1] + pins[1][1]) // 2 - 6, "middle"))
-        lx, ly, la = _place_label(occupied, cands, net.name)
+        lx, ly, la = _place_label(
+            occupied, cands, net.name, (sheet.width, sheet.height)
+        )
         parts.append(
             f'<text x="{lx}" y="{ly}" text-anchor="{la}" fill="black">'
             f"{escape(net.name)}</text>"
