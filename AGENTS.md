@@ -13,22 +13,50 @@ keep them in mind when designing the system:
 - support for low power (electronics) and high power (electrical) schemes standards
 
 ## core concepts 
-- electrical scheme language will be defined for this project, translated to something like svg or other rendering format
-- the LLM will always receive full schematic, prompt, textual information (short list of whys and ADRs) with few last actions, and will return a diff how to change schematic + message for user OR question if not 100% sure
-- the tool for llm will apply diff to schematic, rerender it in real time, 
+- schematic is a pydantic model tree (sheets, components, nets). LLM returns a structured diff via pydantic-ai tool call (`SchematicDiff`: add/remove components, add/remove nets, layout ops) + message for user — no free-form text format, no custom parser
+- components in a diff reference a component library entry (symbol, pinout, package) — LLM never invents pinouts. missing part -> web datasheet search -> proposed library entry needs user confirm. ref designators auto-assigned, unique, renumbered on demand
+- invalid diff (unknown id, bad pin) is rejected; errors go back to LLM for one retry, then to the user. renderer escapes all user/LLM text — SVG reaches browser raw
+- the LLM always receives full schematic state, whys/ADR notes, few last actions; returns a diff + message OR a question if not 100% sure. applied diff re-renders in real time
+- nets are global across sheets: net label = identity everywhere, off-page connector symbols (IEC 60617) auto-drawn at sheet edge
+- layout control is coarse: LLM diff may contain `move_component(x, y)`, `move_group(region)`, `set_sheet`, component `rotation`/`mirror` — renderer and auto-router draw everything. LLM never emits SVG, wire waypoints or route geometry (too many tokens, no validation possible)
+- LLM sets semantics, router sets geometry: nets carry roles (`power|ground|signal|bus|feedback`), router translates roles into route styles via per-schematic-type conventions (signals left→right, power vertical, ground to bottom bus, 3-phase top-down for high power). If router output proves bad later, add optional pin-level side hints — not now
+- LLM prompt about schematic = compact netlist text (authoritative channel) + layout summary + ERC results + rendered PNG attached for multimodal models (layout quality review, reading user images). LLM never gets schematic *only* as an image
+- if layout instructions unclear (which sheet/net(group)/component), LLM concisely asks before changing anything
+- electrical/physical rules: two layers. deterministic ERC in code (single-ended nets, unconnected pins, shorts...) — advisory only, results go to LLM prompt + console, LLM explains and prompts user for fix. LLM bystander review (electrical + physical rules per schematic type) is advisory, never the only check
+- rendering: custom SVG generator — IEC 60617 (EN) symbol library, auto-layout, auto-router -> `<svg>` markup for web UI, PDF export via cairosvg
+- web stack: FastAPI backend + htmx/vanilla JS single page; WebSocket pushes schematic SVG updates; everything Python, no separate frontend codebase
+- voice deferred — no STT/TTS in first versions. when added: STT placeholder is google/chirp-3 via openrouter, TTS via cartesia
 - versioning, in the schematic frame AND in project files, will be supported, so user can revert to previous versions - linear history
-- different schematic types will have different templates/prompts. structure well
+- different schematic types (low power electronics / high power electrical) will have different templates/prompts and symbol subsets. structure well
 
 ## implementation plan
-remove implemented features from this list, add new ones as they are implemented, and keep the list up to date:
-- draft an language suitable for LLM which will be translated to renderable format (svg, pdf, etc.) 
-- create pydantic agents, openrouter, cartesia integrations for LLM and TTS
-- create WEB UI
-  - left panel is chat window with voice/text input, right panel is rendered scheme with realtime updates 1:4
+ordered by milestones (remove implemented features, add new ones, keep up to date):
+
+M1 — core model, no LLM:
+- pydantic schematic model + diff schema + diff applier (validation, revert support)
+- component library (symbol + pinout definitions, ref designator auto-numbering)
+- persistence: one JSON file per project, linear history of applied diffs
+- custom SVG renderer: IEC 60617 symbol library, auto-layout, auto-routing, net labels, text escaping
+- multi-sheet nets with off-page connectors
+- mock replay: scripted conversation drives diffs + rendering with short sleeps (llm latency mock) — no LLM spend
+
+M2 — agent:
+- pydantic-ai agent + openrouter LLM integration (multimodal model for PNG input)
+- LLM prompt builder: netlist text + layout summary + ERC results + rendered PNG
+- invalid diff retry policy
+
+M3 — UI + checks:
+- FastAPI web UI (htmx/vanilla, WebSocket push)
+  - left panel is chat window with text input, right panel is rendered scheme with realtime updates 1:4
   - console for tracking of changes, llm messages
   - possibility to attach files and pictures for LLM
-- mock up of the system allowing to replay text-based conversation and rendering in real time with short sleeps (llm latency mock)
-- ???
+- ERC checks: single-ended net detection, unconnected pins, shorts (advisory)
+- LLM bystander review pass (electrical + physical rules per schematic type)
+- PDF export (cairosvg)
+
+later:
+- voice — STT (google/chirp-3 via openrouter) + cartesia TTS
+- web search for datasheets when components are chosen
 
 ## rules
 - keep this file concise and ai-slop/bloat free
