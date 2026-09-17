@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse
 import logfire
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models import Model
 from starlette.concurrency import run_in_threadpool
 
@@ -82,9 +83,13 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
             result = await run_in_threadpool(
                 run_turn, project_dir, text, model=model, files=uploads
             )
-        except DiffError as e:
+        except (DiffError, UnexpectedModelBehavior) as e:
+            if isinstance(e, UnexpectedModelBehavior):
+                msg = "model output invalid after retries, try again"
+            else:
+                msg = "diff rejected: " + "; ".join(e.errors)
             payload = state() | {
-                "message": "diff rejected: " + "; ".join(e.errors),
+                "message": msg,
                 "question": None,
                 "applied": False,
             }

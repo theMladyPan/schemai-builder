@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 
@@ -60,6 +63,29 @@ def test_run_turn_applies_diff(tmp_path):
     assert (dir_ / "render" / "sheet-1.svg").exists()
     assert len(project.history) == 1
     assert project.history[0].user == "add a resistor"
+
+
+def test_run_turn_garbage_raises_after_output_retries(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    model, calls = _model(responses=["not json at all"])
+    with pytest.raises(UnexpectedModelBehavior):
+        run_turn(dir_, "add a resistor", model=model)
+    assert calls["n"] == 4  # 1 initial + 3 output retries
+
+
+def test_run_turn_invalid_output_then_valid(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    bad = {
+        "message": "m",
+        "diff": "not a diff",
+    }  # type-invalid, fails output validation
+    model, calls = _model(
+        responses=[json.dumps(bad), json.dumps(bad), json.dumps(_ADD_R)]
+    )
+    result = run_turn(dir_, "add a resistor", model=model)
+    assert result.applied
+    assert calls["n"] == 3
+    assert len(load_project(dir_).schematic.components) == 1
 
 
 def test_run_turn_question_skips_diff(tmp_path):

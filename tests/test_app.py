@@ -61,6 +61,17 @@ def test_chat_applies_diff_and_renders(tmp_path):
     assert "<svg" in svg.text
 
 
+def test_chat_garbage_returns_200_invalid(tmp_path):
+    model = _model(["not json at all"])
+    client = TestClient(create_app(tmp_path, model=model))
+    r = client.post("/chat", data={"text": "add junk"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is False
+    assert "invalid" in body["message"]
+    assert client.get("/state").json()["sheets"] == [1]
+
+
 def test_chat_diff_error_returns_200(tmp_path):
     bad = json.dumps(
         {

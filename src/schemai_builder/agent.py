@@ -7,6 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.models import Model
+from pydantic_ai.output import PromptedOutput
 
 from .apply import DiffError, apply_and_record
 from .config.settings import get_settings
@@ -53,8 +54,9 @@ def _run_agent(
 ) -> BaseModel:
     agent = Agent(
         model or get_settings().llm_model,
-        output_type=output_type,
+        output_type=PromptedOutput(output_type),
         instructions=instructions,
+        retries={"output": 3},
     )
     images = [
         BinaryContent(data=png, media_type="image/png")
