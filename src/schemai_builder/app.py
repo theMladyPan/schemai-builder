@@ -46,6 +46,9 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
             "sheets": sheets,
             "sheet": sheets[0] if sheets else 1,
             "erc": [i.model_dump() for i in run_erc(schematic, library_for(project))],
+            "history": [
+                {"user": e.user, "message": e.message} for e in project.history[-20:]
+            ],
         }
 
     @app.get("/")

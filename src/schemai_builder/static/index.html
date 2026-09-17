@@ -103,11 +103,15 @@ ws.onmessage = (e) => {
   try { applyUpdate(JSON.parse(e.data)); } catch { /* ignore non-JSON */ }
 };
 
-// Initial paint
+// Initial paint: resume from project files (sheets, erc, chat history, fresh SVG)
 (async () => {
   const st = await (await fetch("/state")).json();
   setSheets(st.sheets, st.sheet);
   showSheet(st.sheet);
+  for (const h of st.history || []) {
+    if (h.user) logLine("you: " + h.user, "log-user");
+    if (h.message) logLine("LLM: " + h.message);
+  }
   for (const i of st.erc) consoleLine("erc " + i.kind + ": " + i.detail);
 })();
 </script>
