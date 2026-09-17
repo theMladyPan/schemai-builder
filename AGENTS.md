@@ -36,14 +36,7 @@ ordered by milestones (remove implemented features, add new ones, keep up to dat
 
 M1 — done (dev): pydantic schematic, library, apply/revert, JSON persist, SVG renderer, CLI replay.
 
-M2 — agent:
-- migrate persist to project folder (`schematic.json`, `reasons.md`, `history.jsonl`, `render/`)
-- `ReasonsPatch` apply (delete/replace/append paragraphs)
-- pydantic-ai create agent + openrouter (multimodal PNG)
-- prompt builder: reasons + derived netlist + last 5 history + sheet PNGs + user text (no ERC)
-- Python API only: `run_turn(project_dir, text)` — no ask CLI
-- invalid diff retry policy (one retry, then user)
-- SVG to PNG for prompt (cairosvg; same dep later for PDF)
+M2 — done (dev): project folder persist, ReasonsPatch, create-agent `run_turn` (no ERC, no ask CLI).
 
 M3 — UI + checks:
 - FastAPI web UI (htmx/vanilla, WebSocket push)
