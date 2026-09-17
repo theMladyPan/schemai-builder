@@ -101,3 +101,48 @@ def test_prompt_has_no_erc_and_includes_user_text(tmp_path):
     assert calls["n"] == 1
     assert "ERC" not in prompts[0]
     assert "## user\nadd a resistor" in prompts[0]
+
+
+def test_run_turn_text_file_in_prompt(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    prompts: list[str] = []
+    model, calls = _model(responses=[json.dumps(_ADD_R)], prompts=prompts)
+    result = run_turn(
+        dir_,
+        "use the attached notes",
+        model=model,
+        files=[("notes.txt", "R1 goes to GND".encode(), "text/plain")],
+    )
+    assert calls["n"] == 1
+    assert result.applied
+    assert "## file notes.txt" in prompts[0]
+    assert "R1 goes to GND" in prompts[0]
+    assert "## user\nuse the attached notes" in prompts[0]
+    assert len(load_project(dir_).schematic.components) == 1
+
+
+def test_run_turn_binary_non_image_skipped(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    prompts: list[str] = []
+    model, _ = _model(responses=[json.dumps(_ADD_R)], prompts=prompts)
+    run_turn(
+        dir_,
+        "add a resistor",
+        model=model,
+        files=[("blob.bin", b"\x00\xff\xfe", "application/octet-stream")],
+    )
+    assert "## file blob.bin" not in prompts[0]
+
+
+def test_run_turn_image_file_no_crash(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    prompts: list[str] = []
+    model, _ = _model(responses=[json.dumps(_ADD_R)], prompts=prompts)
+    result = run_turn(
+        dir_,
+        "what is this",
+        model=model,
+        files=[("pic.png", b"\x89PNG fake bytes", "image/png")],
+    )
+    assert result.applied
+    assert len(load_project(dir_).schematic.components) == 1

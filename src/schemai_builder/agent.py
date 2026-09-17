@@ -10,10 +10,11 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.models import Model
 
 from .apply import DiffError, apply_and_record
+from .erc import ErcIssue, run_erc
 from .models import Project, ReasonsPatch, SchematicDiff
 from .persist import load_project, save_project
-from .prompt import build_prompt, sheet_pngs
-from .reasons import apply_reasons_patch
+from .prompt import build_prompt, history_tail, netlist_text, sheet_pngs
+from .reasons import apply_reasons_patch, format_numbered, split_paragraphs
 
 INSTRUCTIONS = """\
 You edit electrical schematics via a structured diff. Components reference \
@@ -41,19 +42,45 @@ class TurnResult(BaseModel):
     applied: bool
 
 
-def _run_agent(model: Model | None, prompt: str, project: Project) -> AgentOutput:
+def _run_agent(
+    model: Model | None,
+    prompt: str,
+    project: Project,
+    *,
+    output_type: type[BaseModel],
+    instructions: str,
+    extra_images: list[BinaryContent] | None = None,
+) -> BaseModel:
     agent = Agent(
         model or os.environ.get("OPENROUTER_MODEL", "openrouter:openai/gpt-4.1-mini"),
-        output_type=AgentOutput,
-        instructions=INSTRUCTIONS,
+        output_type=output_type,
+        instructions=instructions,
     )
-    content: str | list[str | BinaryContent] = prompt
-    pngs = sheet_pngs(project.schematic)
-    if pngs:
-        content = [prompt] + [
-            BinaryContent(data=png, media_type="image/png") for png in pngs.values()
-        ]
+    images = [
+        BinaryContent(data=png, media_type="image/png")
+        for png in sheet_pngs(project.schematic).values()
+    ]
+    images += extra_images or []
+    content: str | list[str | BinaryContent] = [prompt, *images] if images else prompt
     return agent.run_sync(content).output
+
+
+def _file_parts(
+    files: list[tuple[str, bytes, str]] | None,
+) -> tuple[list[BinaryContent], str]:
+    """Split attachments: images become BinaryContent, decodable text joins prompt."""
+    images: list[BinaryContent] = []
+    texts: list[str] = []
+    for name, data, media_type in files or []:
+        if media_type.startswith("image/"):
+            images.append(BinaryContent(data=data, media_type=media_type))
+            continue
+        try:
+            decoded = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue  # ponytail: ignore non-image binaries
+        texts.append(f"## file {name}\n{decoded}")
+    return images, "\n\n".join(texts)
 
 
 def run_turn(
@@ -61,11 +88,22 @@ def run_turn(
     text: str,
     *,
     model: Model | None = None,
+    files: list[tuple[str, bytes, str]] | None = None,  # name, data, media_type
 ) -> TurnResult:
     """Load the project, run one agent turn, apply and persist the result."""
     project = load_project(project_dir)
     prompt = build_prompt(project, text)
-    output = _run_agent(model, prompt, project)
+    images, file_text = _file_parts(files)
+    if file_text:
+        prompt = f"{prompt}\n\n{file_text}"
+    output = _run_agent(
+        model,
+        prompt,
+        project,
+        output_type=AgentOutput,
+        instructions=INSTRUCTIONS,
+        extra_images=images,
+    )
     if output.question:
         return TurnResult(
             project=project,
@@ -78,7 +116,14 @@ def run_turn(
         apply_and_record(project, diff, user=text, message=output.message)
     except DiffError as e:
         retry_prompt = f"{prompt}\n\n## diff errors\n" + "\n".join(e.errors)
-        output = _run_agent(model, retry_prompt, project)
+        output = _run_agent(
+            model,
+            retry_prompt,
+            project,
+            output_type=AgentOutput,
+            instructions=INSTRUCTIONS,
+            extra_images=images,
+        )
         if output.question:
             return TurnResult(
                 project=project,
@@ -92,3 +137,56 @@ def run_turn(
         project.reasons = apply_reasons_patch(project.reasons, output.reasons_patch)
     save_project(project, project_dir)
     return TurnResult(project=project, message=output.message, applied=True)
+
+
+class ReviewOutput(BaseModel):
+    """Structured LLM output for an advisory review."""
+
+    message: str
+
+
+class ReviewResult(BaseModel):
+    """Outcome of one review turn: LLM message plus deterministic ERC issues."""
+
+    message: str
+    issues: list[ErcIssue]
+
+
+REVIEW_INSTRUCTIONS = """\
+You review electrical schematics. Advisory only: do NOT propose applying a \
+diff, just report issues. Components reference library ids; never invent \
+pinouts. Open nets may be work in progress, flag them but do not treat them \
+as errors.\
+"""
+
+
+def review_turn(project_dir: Path, *, model: Model | None = None) -> ReviewResult:
+    """Run one read-only review turn: reasons, netlist, ERC, history, sheet PNGs."""
+    project = load_project(project_dir)
+    issues = run_erc(project.schematic)
+    erc = "\n".join(f"{i.kind}: {i.detail}" for i in issues) or "(none)"
+    numbered = format_numbered(split_paragraphs(project.reasons)) or "(none)"
+    prompt = "\n".join(
+        [
+            "## reasons",
+            numbered,
+            "",
+            "## netlist",
+            netlist_text(project.schematic),
+            "",
+            "## erc",
+            erc,
+            "",
+            "## recent",
+            history_tail(project),
+        ]
+    )
+    output = _run_agent(
+        model,
+        prompt,
+        project,
+        output_type=ReviewOutput,
+        instructions=REVIEW_INSTRUCTIONS,
+    )
+    assert isinstance(output, ReviewOutput)
+    return ReviewResult(message=output.message, issues=issues)
