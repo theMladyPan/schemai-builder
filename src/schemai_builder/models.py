@@ -125,8 +125,32 @@ class SchematicDiff(BaseModel):
     set_sheet: list[SetSheet] = []
 
 
+class HistoryEntry(BaseModel):
+    """One recorded turn: applied diff plus user text and LLM message."""
+
+    diff: SchematicDiff
+    user: str = ""
+    message: str = ""
+
+
+class ReasonReplace(BaseModel):
+    """Replace reasons.md paragraph at 1-based id with new text."""
+
+    id: int
+    text: str
+
+
+class ReasonsPatch(BaseModel):
+    """Structured edit of reasons.md: delete, replace, append paragraphs."""
+
+    delete: list[int] = []
+    replace: list[ReasonReplace] = []
+    append: list[str] = []
+
+
 class Project(BaseModel):
-    """A project: current schematic plus linear diff history."""
+    """A project: current schematic, reasons, and linear history."""
 
     schematic: Schematic
-    history: list[SchematicDiff] = []
+    reasons: str = ""
+    history: list[HistoryEntry] = []

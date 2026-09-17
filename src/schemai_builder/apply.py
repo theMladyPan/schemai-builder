@@ -8,6 +8,7 @@ from .library import LIBRARY
 from .models import (
     AddComponent,
     Component,
+    HistoryEntry,
     Project,
     Schematic,
     SchematicDiff,
@@ -174,20 +175,23 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
     return out
 
 
-def apply_and_record(project: Project, diff: SchematicDiff) -> Project:
-    """Apply a diff and append it to the project history."""
+def apply_and_record(
+    project: Project, diff: SchematicDiff, user: str = "", message: str = ""
+) -> Project:
+    """Apply a diff and append a HistoryEntry to the project history."""
     project.schematic = apply_diff(project.schematic, diff)
-    project.history.append(diff)
+    project.history.append(HistoryEntry(diff=diff, user=user, message=message))
     return project
 
 
 def revert(project: Project, n: int = 1) -> Project:
     """Drop the last n diffs and replay the remaining history from empty."""
+    # reasons are not rolled back in M2
     if n < 0:
         raise ValueError(f"cannot revert {n} diffs")
     project.history = project.history[:-n] if n else project.history
     schematic = empty_schematic()
-    for diff in project.history:
-        schematic = apply_diff(schematic, diff)
+    for entry in project.history:
+        schematic = apply_diff(schematic, entry.diff)
     project.schematic = schematic
     return project

@@ -53,14 +53,19 @@ def test_remove_unknown_id():
 
 
 def test_persist_roundtrip(tmp_path):
-    project = Project(schematic=empty_schematic())
+    project = Project(schematic=empty_schematic(), reasons="[1] use R\n")
     apply_and_record(
         project,
         SchematicDiff(add_components=[AddComponent(library_id="R", value="10k")]),
+        user="add R",
+        message="Added resistor.",
     )
-    path = tmp_path / "proj.json"
-    save_project(project, path)
-    loaded = load_project(path)
+    save_project(project, tmp_path)
+    assert (tmp_path / "schematic.json").exists()
+    assert (tmp_path / "reasons.md").exists()
+    assert (tmp_path / "history.jsonl").exists()
+    assert (tmp_path / "render" / "sheet-1.svg").exists()
+    loaded = load_project(tmp_path)
     assert loaded == project
 
 
@@ -127,12 +132,11 @@ def test_revert_negative_raises():
 
 
 def test_load_project_bad_library_id(tmp_path):
-    project = Project(schematic=empty_schematic())
-    project.schematic.components.append(Component(id="c1", library_id="NOPE", ref="R1"))
-    path = tmp_path / "proj.json"
-    path.write_text(project.model_dump_json())
+    sch = empty_schematic()
+    sch.components.append(Component(id="c1", library_id="NOPE", ref="R1"))
+    (tmp_path / "schematic.json").write_text(sch.model_dump_json())
     with pytest.raises(ValueError, match="NOPE"):
-        load_project(path)
+        load_project(tmp_path)
 
 
 def test_duplicate_ref_rejected():
