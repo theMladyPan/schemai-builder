@@ -1,2 +1,3 @@
 - m1-core-model: pydantic schematic, diff apply/revert, SVG render, CLI replay
 - m2-agent: project folder, reasons patch, create-agent run_turn
+- m3-ui-checks: FastAPI UI, ERC, review agent, PDF
