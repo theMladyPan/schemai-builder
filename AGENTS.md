@@ -32,13 +32,7 @@ keep them in mind when designing the system:
 ## implementation plan
 ordered by milestones (remove implemented features, add new ones, keep up to date):
 
-M1 — core model, no LLM:
-- pydantic schematic model + diff schema + diff applier (validation, revert support)
-- component library (symbol + pinout definitions, ref designator auto-numbering)
-- persistence: one JSON file per project, linear history of applied diffs
-- custom SVG renderer: IEC 60617 symbol library, auto-layout, auto-routing, net labels, text escaping
-- multi-sheet nets with off-page connectors
-- mock replay: scripted conversation drives diffs + rendering with short sleeps (llm latency mock) — no LLM spend
+M1 — done (dev): pydantic schematic, library, apply/revert, JSON persist, SVG renderer, CLI replay.
 
 M2 — agent:
 - pydantic-ai agent + openrouter LLM integration (multimodal model for PNG input)
