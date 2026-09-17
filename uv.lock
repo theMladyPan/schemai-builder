@@ -2085,7 +2085,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cairosvg" },
     { name = "fastapi", extra = ["standard"] },
-    { name = "logfire", extra = ["fastapi"] },
+    { name = "logfire", extra = ["fastapi", "httpx"] },
     { name = "pydantic" },
     { name = "pydantic-ai" },
     { name = "pydantic-settings" },
@@ -2101,7 +2101,7 @@ dev = [
 requires-dist = [
     { name = "cairosvg", specifier = ">=2.9.1" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.141.1" },
-    { name = "logfire", extras = ["fastapi"], specifier = ">=5.1.0" },
+    { name = "logfire", extras = ["fastapi", "httpx", "pydantic-ai"], specifier = ">=5.1.0" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pydantic-ai", specifier = ">=2.44.0" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },

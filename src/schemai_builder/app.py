@@ -86,8 +86,10 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
         except (DiffError, UnexpectedModelBehavior) as e:
             if isinstance(e, UnexpectedModelBehavior):
                 msg = "model output invalid after retries, try again"
+                logfire.exception("chat turn failed {kind}", kind="model")
             else:
                 msg = "diff rejected: " + "; ".join(e.errors)
+                logfire.exception("chat turn failed {kind}", kind="diff")
             payload = state() | {
                 "message": msg,
                 "question": None,
@@ -104,10 +106,18 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
 
     @app.post("/review")
     async def review() -> dict[str, Any]:
-        result = await run_in_threadpool(review_turn, project_dir, model=model)
-        payload = state() | {"message": result.message}
+        try:
+            result = await run_in_threadpool(review_turn, project_dir, model=model)
+        except UnexpectedModelBehavior:
+            logfire.exception("review turn failed {kind}", kind="model")
+            message = "review failed: model output invalid, try again"
+            issues: list[dict[str, Any]] = []
+        else:
+            message = result.message
+            issues = [i.model_dump() for i in result.issues]
+        payload = state() | {"message": message}
         await broadcast(payload)  # issues already in state().erc, no duplicate
-        return payload | {"issues": [i.model_dump() for i in result.issues]}
+        return payload | {"issues": issues}
 
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:

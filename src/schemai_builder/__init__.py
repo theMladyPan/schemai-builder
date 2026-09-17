@@ -25,5 +25,6 @@ logfire.configure(
 )
 
 logfire.instrument_pydantic_ai()
+logfire.instrument_httpx()
 
 __all__ = ["main"]

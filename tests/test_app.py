@@ -116,6 +116,17 @@ def test_review(tmp_path):
     assert client.get("/state").json()["sheets"] == [1]  # schematic unchanged
 
 
+def test_review_garbage_returns_200(tmp_path):
+    model = _model(["not json at all"])
+    client = TestClient(create_app(tmp_path, model=model))
+    r = client.post("/review")
+    assert r.status_code == 200
+    body = r.json()
+    assert "invalid" in body["message"]
+    assert body["issues"] == []
+    assert client.get("/state").json()["sheets"] == [1]  # read-only, unchanged
+
+
 def test_pdf(tmp_path):
     model = _model([json.dumps(_ADD_R)])
     client = TestClient(create_app(tmp_path, model=model))
