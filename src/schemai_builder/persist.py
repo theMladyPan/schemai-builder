@@ -22,6 +22,8 @@ def save_project(project: Project, project_dir: Path) -> None:
             f.write(entry.model_dump_json() + "\n")
     render_dir = project_dir / "render"
     render_dir.mkdir(exist_ok=True)
+    for stale in render_dir.glob("sheet-*.svg"):
+        stale.unlink()
     for number, svg in render_all(project.schematic).items():
         (render_dir / f"sheet-{number}.svg").write_text(svg)
 

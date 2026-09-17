@@ -27,6 +27,12 @@ def test_delete_replace_append():
     assert apply_reasons_patch(text, patch) == "ONE\n\ntwo\n\nfour"
 
 
+def test_ids_resolve_against_original_paragraphs():
+    text = "one\n\ntwo\n\nthree\n\nfour"
+    patch = ReasonsPatch(delete=[1], replace=[ReasonReplace(id=3, text="THREE")])
+    assert apply_reasons_patch(text, patch) == "two\n\nTHREE\n\nfour"
+
+
 def test_bad_id_raises():
     with pytest.raises(ValueError):
         apply_reasons_patch("one", ReasonsPatch(delete=[2]))

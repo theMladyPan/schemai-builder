@@ -79,6 +79,13 @@ def run_turn(
     except DiffError as e:
         retry_prompt = f"{prompt}\n\n## diff errors\n" + "\n".join(e.errors)
         output = _run_agent(model, retry_prompt, project)
+        if output.question:
+            return TurnResult(
+                project=project,
+                message=output.message,
+                question=output.question,
+                applied=False,
+            )
         diff = output.diff or SchematicDiff()
         apply_and_record(project, diff, user=text, message=output.message)
     if output.reasons_patch:

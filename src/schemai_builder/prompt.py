@@ -21,14 +21,6 @@ def netlist_text(schematic: Schematic) -> str:
     return "\n".join(lines)
 
 
-def layout_summary(schematic: Schematic) -> str:
-    """One line per component with position and rotation."""
-    return "\n".join(
-        f"{c.ref} @ ({c.x},{c.y}) sheet {c.sheet} rot {c.rotation}"
-        for c in schematic.components
-    )
-
-
 def history_tail(project: Project, n: int = 5) -> str:
     """Last n history entries, one line each."""
     lines = []
@@ -43,7 +35,7 @@ def history_tail(project: Project, n: int = 5) -> str:
 
 
 def build_prompt(project: Project, user_text: str) -> str:
-    """Full create-agent prompt: reasons, netlist, layout, history, user text."""
+    """Full create-agent prompt: reasons, netlist, history, user text."""
     numbered = format_numbered(split_paragraphs(project.reasons)) or "(none)"
     return "\n".join(
         [
@@ -52,9 +44,6 @@ def build_prompt(project: Project, user_text: str) -> str:
             "",
             "## netlist",
             netlist_text(project.schematic),
-            "",
-            "## layout",
-            layout_summary(project.schematic),
             "",
             "## recent",
             history_tail(project),

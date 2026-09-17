@@ -69,6 +69,17 @@ def test_persist_roundtrip(tmp_path):
     assert loaded == project
 
 
+def test_save_project_clears_removed_sheet_svgs(tmp_path):
+    sch2 = apply_diff(
+        empty_schematic(), SchematicDiff(add_sheets=[Sheet(number=2, title="p2")])
+    )
+    save_project(Project(schematic=sch2), tmp_path)
+    assert (tmp_path / "render" / "sheet-2.svg").exists()
+    save_project(Project(schematic=empty_schematic()), tmp_path)
+    assert not (tmp_path / "render" / "sheet-2.svg").exists()
+    assert (tmp_path / "render" / "sheet-1.svg").exists()
+
+
 def test_revert_undoes_last_add():
     project = Project(schematic=empty_schematic())
     apply_and_record(

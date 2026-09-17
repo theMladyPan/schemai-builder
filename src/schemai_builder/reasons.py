@@ -16,15 +16,17 @@ def format_numbered(paragraphs: list[str]) -> str:
 
 
 def apply_reasons_patch(text: str, patch: ReasonsPatch) -> str:
-    """Apply deletes (highest id first), then replaces, then appends; 1-based ids."""
-    paragraphs = split_paragraphs(text)
-    for i in sorted(patch.delete, reverse=True):
-        if not 1 <= i <= len(paragraphs):
+    """Apply deletes/replaces against original 1-based ids, then append."""
+    original = split_paragraphs(text)
+    deleted = set(patch.delete)
+    for i in deleted | {r.id for r in patch.replace}:
+        if not 1 <= i <= len(original):
             raise ValueError(f"unknown paragraph id {i}")
-        del paragraphs[i - 1]
-    for r in patch.replace:
-        if not 1 <= r.id <= len(paragraphs):
-            raise ValueError(f"unknown paragraph id {r.id}")
-        paragraphs[r.id - 1] = r.text
+    replacements = {r.id: r.text for r in patch.replace}
+    paragraphs = [
+        replacements[i] if i in replacements else p
+        for i, p in enumerate(original, 1)
+        if i not in deleted
+    ]
     paragraphs.extend(patch.append)
     return "\n\n".join(paragraphs)

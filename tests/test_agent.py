@@ -82,6 +82,17 @@ def test_run_turn_retries_bad_diff_once(tmp_path):
     assert len(load_project(dir_).schematic.components) == 1
 
 
+def test_run_turn_retry_question_skips_apply(tmp_path):
+    dir_ = _tmp_project(tmp_path)
+    bad = {"message": "add", "diff": {"add_components": [{"library_id": "NOPE"}]}}
+    out = dict(_ADD_R, question="which sheet?")
+    model, _ = _model(responses=[json.dumps(bad), json.dumps(out)])
+    result = run_turn(dir_, "add a resistor", model=model)
+    assert not result.applied
+    assert result.question == "which sheet?"
+    assert load_project(dir_).schematic.components == []
+
+
 def test_prompt_has_no_erc_and_includes_user_text(tmp_path):
     dir_ = _tmp_project(tmp_path)
     prompts: list[str] = []
