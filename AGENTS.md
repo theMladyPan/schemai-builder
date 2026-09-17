@@ -40,6 +40,8 @@ M2 — done (dev): project folder persist, ReasonsPatch, create-agent `run_turn`
 
 M3 — done (dev): FastAPI UI (vanilla, WS), ERC console, review button, PDF.
 
+M4 — done (dev): coordinate-free create diffs, derived layout (networkx + Manhattan router), IEC core symbols, project parts catalog (`add_parts` → `parts.json`) the LLM can extend.
+
 later:
 - voice — STT (google/chirp-3 via openrouter) + cartesia TTS
 - web search for datasheets when components are chosen
