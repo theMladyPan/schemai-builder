@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse
+import logfire
 from pydantic_ai.models import Model
 from starlette.concurrency import run_in_threadpool
 
@@ -112,5 +113,7 @@ def create_app(project_dir: Path, *, model: Model | None = None) -> FastAPI:
                 await websocket.receive_text()  # ignore client pings; disconnect raises
         except Exception:
             websockets.discard(websocket)
+
+    logfire.instrument_fastapi(app)  # request spans + exceptions to logfire
 
     return app
