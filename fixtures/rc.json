@@ -1,0 +1,39 @@
+{
+  "sleep": 0.05,
+  "steps": [
+    {
+      "message": "add resistor R1 10k",
+      "diff": {
+        "add_components": [
+          {"library_id": "R", "id": "r1", "ref": "R1", "value": "10k", "sheet": 1, "x": 80, "y": 100}
+        ]
+      }
+    },
+    {
+      "message": "add capacitor C1 100n",
+      "diff": {
+        "add_components": [
+          {"library_id": "C", "id": "c1", "ref": "C1", "value": "100n", "sheet": 1, "x": 240, "y": 100}
+        ]
+      }
+    },
+    {
+      "message": "add ground symbol",
+      "diff": {
+        "add_components": [
+          {"library_id": "GND", "id": "gnd1", "ref": "GND1", "sheet": 1, "x": 240, "y": 220}
+        ]
+      }
+    },
+    {
+      "message": "wire it: IN -> R1 -> C1 -> GND",
+      "diff": {
+        "add_nets": [
+          {"name": "IN", "role": "signal", "pins": ["r1.A"]},
+          {"name": "N1", "role": "signal", "pins": ["r1.B", "c1.A"]},
+          {"name": "GND", "role": "ground", "pins": ["c1.B", "gnd1.A"]}
+        ]
+      }
+    }
+  ]
+}
