@@ -89,6 +89,19 @@ def test_router_avoids_box():
             assert not (176 < x1 < 304 and min(y1, y2) < 244 and max(y1, y2) > 76)
 
 
+def test_single_pin_net_label():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[AddComponent(library_id="R", x=100, y=100)],
+            add_nets=[Net(name="n1", pins=["c1.B"])],
+        ),
+    )
+    svg = render_sheet(sch, 1)
+    assert ">n1<" in svg
+    assert "<polyline" not in svg
+
+
 def test_render_all_keys_and_unknown_sheet():
     sch = empty_schematic()
     sch.sheets.append(Sheet(number=2))

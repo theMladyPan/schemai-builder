@@ -91,7 +91,6 @@ class MoveComponent(BaseModel):
     """Diff op: move/rotate/mirror one component; None fields unchanged."""
 
     id: str
-    sheet: int | None = None
     x: int | None = None
     y: int | None = None
     rotation: Literal[0, 90, 180, 270] | None = None
@@ -116,6 +115,7 @@ class SetSheet(BaseModel):
 class SchematicDiff(BaseModel):
     """A structured diff to apply to a schematic; empty lists by default."""
 
+    add_sheets: list[Sheet] = []
     add_components: list[AddComponent] = []
     remove_ids: list[str] = []
     add_nets: list[Net] = []

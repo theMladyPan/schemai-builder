@@ -176,7 +176,8 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
 
     for net in schematic.nets:
         pins = _net_pins(schematic, net.pins, sheet_number)
-        if len(_net_sheets(schematic, net.pins)) >= 2 and pins:
+        offpage = len(_net_sheets(schematic, net.pins)) >= 2 and bool(pins)
+        if offpage:
             ox, oy = sheet.width - 40, pins[0][1]
             parts.append(
                 f'<polygon points="{ox},{oy - 8} {ox},{oy + 8} {ox + 16},{oy}"/>'
@@ -185,6 +186,14 @@ def render_sheet(schematic: Schematic, sheet_number: int) -> str:
                 f'<text x="{ox - 6}" y="{oy + 4}" text-anchor="end" fill="black">'
                 f"{escape(net.name)}</text>"
             )
+        if len(pins) == 1:
+            if not offpage:
+                px, py, _ = pins[0]
+                parts.append(
+                    f'<text x="{px}" y="{py - 6}" text-anchor="middle" fill="black">'
+                    f"{escape(net.name)}</text>"
+                )
+            continue
         if len(pins) < 2:
             continue
         for (x1, y1, ida), (x2, y2, idb) in pairwise(pins):

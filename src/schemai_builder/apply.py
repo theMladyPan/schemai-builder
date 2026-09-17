@@ -91,6 +91,12 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
     errors: list[str] = []
     by_id = {c.id: c for c in out.components}
 
+    for sheet in diff.add_sheets:
+        if sheet.number in {s.number for s in out.sheets}:
+            errors.append(f"duplicate sheet number {sheet.number}")
+        else:
+            out.sheets.append(sheet)
+
     for op in diff.add_components:
         _add_component(out, op, errors)
         by_id = {c.id: c for c in out.components}
@@ -101,8 +107,17 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
         else:
             del out.components[out.components.index(by_id[comp_id])]
             del by_id[comp_id]
+            for net in out.nets:
+                net.pins = [p for p in net.pins if not p.startswith(f"{comp_id}.")]
 
     net_names = {n.name for n in out.nets}
+    for name in diff.remove_nets:
+        if name not in net_names:
+            errors.append(f"unknown net {name!r}")
+        else:
+            out.nets = [n for n in out.nets if n.name != name]
+            net_names.discard(name)
+
     for net in diff.add_nets:
         if net.name in net_names:
             errors.append(f"duplicate net name {net.name!r}")
@@ -122,22 +137,11 @@ def apply_diff(schematic: Schematic, diff: SchematicDiff) -> Schematic:
             out.nets.append(net)
             net_names.add(net.name)
 
-    for name in diff.remove_nets:
-        if name not in net_names:
-            errors.append(f"unknown net {name!r}")
-        else:
-            out.nets = [n for n in out.nets if n.name != name]
-
     for op in diff.move_components:
         comp = by_id.get(op.id)
         if comp is None:
             errors.append(f"unknown component id {op.id!r}")
             continue
-        if op.sheet is not None:
-            if op.sheet not in {s.number for s in out.sheets}:
-                errors.append(f"sheet {op.sheet} does not exist")
-                continue
-            comp.sheet = op.sheet
         if op.x is not None:
             comp.x = op.x
         if op.y is not None:
@@ -179,6 +183,8 @@ def apply_and_record(project: Project, diff: SchematicDiff) -> Project:
 
 def revert(project: Project, n: int = 1) -> Project:
     """Drop the last n diffs and replay the remaining history from empty."""
+    if n < 0:
+        raise ValueError(f"cannot revert {n} diffs")
     project.history = project.history[:-n] if n else project.history
     schematic = empty_schematic()
     for diff in project.history:

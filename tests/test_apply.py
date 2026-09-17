@@ -7,9 +7,11 @@ import pytest
 from schemai_builder.apply import DiffError, apply_and_record, apply_diff, revert
 from schemai_builder.models import (
     AddComponent,
+    Component,
     Net,
     Project,
     SchematicDiff,
+    Sheet,
     empty_schematic,
 )
 from schemai_builder.persist import load_project, save_project
@@ -73,6 +75,64 @@ def test_revert_undoes_last_add():
     revert(project)
     assert [c.ref for c in project.schematic.components] == ["R1"]
     assert len(project.history) == 1
+
+
+def test_add_sheet_then_component():
+    sch = apply_diff(
+        empty_schematic(), SchematicDiff(add_sheets=[Sheet(number=2, title="page 2")])
+    )
+    assert [s.number for s in sch.sheets] == [1, 2]
+    sch = apply_diff(
+        sch, SchematicDiff(add_components=[AddComponent(library_id="R", sheet=2)])
+    )
+    assert sch.components[0].sheet == 2
+    with pytest.raises(DiffError):
+        apply_diff(sch, SchematicDiff(add_sheets=[Sheet(number=1)]))
+
+
+def test_remove_component_prunes_net_pins():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[
+                AddComponent(library_id="R", id="r1"),
+                AddComponent(library_id="C", id="c1"),
+            ],
+            add_nets=[Net(name="n1", pins=["r1.B", "c1.A"])],
+        ),
+    )
+    sch = apply_diff(sch, SchematicDiff(remove_ids=["c1"]))
+    assert sch.nets[0].pins == ["r1.B"]
+
+
+def test_remove_and_readd_same_net():
+    sch = apply_diff(
+        empty_schematic(),
+        SchematicDiff(
+            add_components=[AddComponent(library_id="R", id="r1")],
+            add_nets=[Net(name="n1", pins=["r1.B"])],
+        ),
+    )
+    sch = apply_diff(
+        sch,
+        SchematicDiff(remove_nets=["n1"], add_nets=[Net(name="n1", pins=["r1.A"])]),
+    )
+    assert sch.nets[0].pins == ["r1.A"]
+
+
+def test_revert_negative_raises():
+    project = Project(schematic=empty_schematic())
+    with pytest.raises(ValueError):
+        revert(project, -1)
+
+
+def test_load_project_bad_library_id(tmp_path):
+    project = Project(schematic=empty_schematic())
+    project.schematic.components.append(Component(id="c1", library_id="NOPE", ref="R1"))
+    path = tmp_path / "proj.json"
+    path.write_text(project.model_dump_json())
+    with pytest.raises(ValueError, match="NOPE"):
+        load_project(path)
 
 
 def test_duplicate_ref_rejected():
